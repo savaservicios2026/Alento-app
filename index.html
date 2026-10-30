@@ -4383,11 +4383,12 @@ function viewAjustes(){
 
     <div class="err" id="cf_err" role="alert"></div>
     <div class="actions" style="justify-content:flex-start"><button class="btn" type="submit">Guardar ajustes</button>${JSON.stringify(d) !== cfgBase ? '<button type="button" class="btn ghost" id="cf_reset">Descartar cambios</button>' : ''}</div>
-  </form>`;
+  </form>${LIVE ? `<p class="muted" style="font-size:13px;margin:18px 0 6px">Has entrado como recepción con ${esc(L.email)}.</p><button class="btn ghost logout" id="logout">Cerrar sesión</button>` : ''}`;
 }
 function setPath(o, path, v){ const ks = path.split('.'); let t = o; ks.slice(0, -1).forEach(k => t = t[k]); t[ks[ks.length - 1]] = v; }
 function afterAjustes(root){
   const d = cfgDraft;
+  bindLogout(root);
   root.querySelectorAll('[data-sector]').forEach(b => b.onclick = () => {
     const k = b.dataset.sector; if (k === d.sector) return;
     Object.assign(d, { sector:k, cap:SECTORS[k].cap, wait:SECTORS[k].wait, cancel:SECTORS[k].cancel, week:clone(SECTORS[k].week), staff:Object.values(SECTORS[k].staff).map(x => x.name) });
