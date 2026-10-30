@@ -229,7 +229,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between;
 .steps li.on{color:var(--ink);font-weight:500}.steps li.on .num{background:var(--brand);color:var(--on-brand)}
 .steps li.done .num{background:var(--salvia);color:#F1ECE2}
 .regform{display:flex;flex-direction:column}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}.grid3{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:0 12px}
+.grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 12px}.grid3{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) minmax(0,1fr);gap:0 12px}.grid2 input,.grid3 input{min-width:0;width:100%;box-sizing:border-box}
 @media (max-width:560px){.grid2,.grid3{grid-template-columns:minmax(0,1fr)}}
 .sub{font-size:14px;margin:20px 0 0}
 .docs{display:flex;flex-direction:column;gap:8px;margin-top:12px}
