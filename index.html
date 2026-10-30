@@ -4353,9 +4353,18 @@ function viewAjustes(){
     </section>
 
     <section class="aj-sec"><h2>Equipo</h2>
-      <p class="muted">Las personas que dan las ${SEC.units}. Aparecen en el horario.</p>
-      <div class="aj-staff">${d.staff.map((n, i) => `<span class="chip">${esc(n)}<button type="button" data-act="del-staff" data-i="${i}" aria-label="Quitar a ${esc(n)}">×</button></span>`).join('')}</div>
-      <div class="aj-row" style="justify-content:flex-start"><label class="field" style="margin:0;flex:1 1 200px;max-width:320px;min-width:0"><input id="aj_staff" placeholder="Nombre y apellido" aria-label="Nombre y apellido"></label><button type="button" class="btn ghost sm" data-act="add-staff">Añadir</button></div>
+      <p class="muted">Añade a cada ${sec.staffLabel.toLowerCase()} y sus ${SEC.units} de la semana. Al guardar aparecen en el horario de cada día.</p>
+      ${Object.entries(keys).map(([k, v], si) => { const mine = DOW.flatMap(([n]) => (d.week[n] || []).map((r, i) => ({ n, i, r })).filter(x => x.r[2] === k).sort((a, b) => a.r[0].localeCompare(b.r[0])));
+        return `<div class="aj-card"><div class="aj-row"><b>${esc(v.name)}</b><span class="muted" style="font-size:12.5px;margin-right:auto">${mine.length ? `${mine.length} ${U(mine.length)} a la semana` : `Sin ${SEC.units} todavía`}</span><button type="button" class="linkbtn" data-act="del-staff" data-i="${si}">Quitar</button></div>
+        ${mine.map(({ n, i, r }) => `<div class="aj-class">
+          <label class="field">Día<select data-move="${n}.${i}">${DOW.map(([dn,, name]) => `<option value="${dn}" ${dn === n ? 'selected' : ''}>${cap1(name)}</option>`).join('')}</select></label>
+          ${fld('Hora', `week.${n}.${i}.0`, r[0], 'type="time"')}
+          ${sel('Tipo', `week.${n}.${i}.1`, r[1], typeOpts)}
+          ${sel('Nivel', `week.${n}.${i}.3`, r[3], (LEVELS.includes(r[3]) ? LEVELS : [r[3], ...LEVELS]).map(x => [x, x]))}
+          ${num('Plazas', `week.${n}.${i}.4`, r[4], 1, 60, 'step="1"')}
+          <button type="button" class="linkbtn" data-act="del-class" data-day="${n}" data-i="${i}">Quitar</button></div>`).join('')}
+        <button type="button" class="btn ghost sm" data-act="add-pclass" data-k="${k}" style="margin-top:10px">Añadir ${SEC.unit}</button></div>`; }).join('')}
+      <div class="aj-row" style="justify-content:flex-start"><label class="field" style="margin:0;flex:1 1 200px;max-width:320px;min-width:0"><input id="aj_staff" placeholder="Nombre y apellido de la nueva persona" aria-label="Nombre y apellido"></label><button type="button" class="btn ghost sm" data-act="add-staff">Añadir</button></div>
     </section>
 
     <section class="aj-sec"><h2>Horario semanal</h2>
@@ -4393,6 +4402,10 @@ function afterAjustes(root){
     else if (/\.recurring$/.test(el.dataset.p)) v = el.value === '1';
     setPath(d, el.dataset.p, v);
   });
+  root.querySelectorAll('[data-move]').forEach(el => el.onchange = () => {
+    const [from, i] = el.dataset.move.split('.').map(Number), to = +el.value;
+    const row = d.week[from].splice(i, 1)[0]; (d.week[to] || (d.week[to] = [])).push(row); render();
+  });
   const toastErr = m => { const e = root.querySelector('#cf_err'); e.textContent = m; e.scrollIntoView({ block:'center' }); };
   root.querySelectorAll('[data-act]').forEach(b => b.onclick = () => {
     const i = +b.dataset.i, keys = staff(d.staff);
@@ -4410,7 +4423,8 @@ function afterAjustes(root){
       case 'day': ajDay = i; break;
       case 'add-class': { const list = d.week[ajDay] || (d.week[ajDay] = []), last = list[list.length - 1];
         list.push(last ? [last[0], last[1], last[2], last[3], last[4]] : ['18:00', Object.keys(TYPES)[0], Object.keys(keys)[0] || '', 'Todos', d.cap]); break; }
-      case 'del-class': d.week[ajDay].splice(i, 1); break;
+      case 'del-class': d.week[b.dataset.day != null ? +b.dataset.day : ajDay].splice(i, 1); break;
+      case 'add-pclass': (d.week[1] || (d.week[1] = [])).push(['18:00', Object.keys(TYPES)[0], b.dataset.k, 'Todos', d.cap]); break;
     }
     render();
   });
