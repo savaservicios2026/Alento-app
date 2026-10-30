@@ -166,6 +166,11 @@ main{padding-block:24px 64px}
 .doclist .dn{flex:1 1 180px;min-width:0;overflow-wrap:anywhere}
 .clock-panel h2{margin:4px 0 0}.clock-panel .actions .btn{min-width:150px}
 .clock-tools{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px}.clock-tools .field{margin:0;min-width:0;flex:0 1 220px}
+.clock-board{table-layout:fixed;width:100%;min-width:0;border-collapse:collapse;font-size:12.5px}.clock-board th,.clock-board td{padding:6px 3px;text-align:center;vertical-align:top;border-bottom:1px solid var(--line)}
+.clock-board thead th:first-child,.clock-board tbody th{width:52px;text-align:left;font-weight:500;color:var(--ink-2);white-space:nowrap}
+.clock-board td div{line-height:1.35}.clock-board td b{display:block;margin-top:2px}.clock-board .cb-empty{color:var(--ink-3,#bbb)}.clock-board .status{font-size:10.5px;padding:1px 5px}
+.cb-who{all:unset;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:4px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}.clock-board thead small{display:block;color:var(--ink-2);font-weight:400}
+.cb-dot{width:8px;height:8px;border-radius:50%;background:#c9c4bb;flex:none}.cb-dot.ok{background:#3f9b6b}.cb-dot.wait{background:#d49a2a}
 .clock-totals{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}.clock-table a{font-size:12px;color:var(--ink-2)}
 .aj-sec{margin-top:26px;padding-top:18px;border-top:1px solid var(--line)}.aj-sec > p.muted{font-size:13px;margin:4px 0 0}
 .aj-card{border:1px solid var(--line);border-radius:12px;padding:4px 14px 14px;margin-top:12px;background:var(--bg)}
@@ -4588,6 +4593,27 @@ function monthEvents(){
   if (!LIVE) return (S.clock || []).filter(e => ymd(new Date(e.at)).slice(0, 7) === CLK.month && (isAdmin() ? (!CLK.uid || e.uid === CLK.uid) : e.uid === selfId()));
   return CLK.data || [];
 }
+// Vista de todo el equipo: una columna por trabajador y una fila por día, para ver a todos a la vez.
+function clockBoard(days, people){
+  const has = new Set(days.map(w => w.uid));
+  const cols = people.filter(u => u !== selfId() || has.has(u)).concat([...has].filter(u => !people.includes(u)));
+  if (!cols.length) return `<div class="empty">${ISO()}<p>Todavía no hay nadie del equipo con acceso para fichar. Dalo en la pestaña Equipo.</p></div>`;
+  const by = {}; days.forEach(w => ((by[w.day] = by[w.day] || {})[w.uid] = (by[w.day][w.uid] || [])).push(w));
+  const total = u => days.filter(w => w.uid === u).reduce((a, w) => a + w.worked, 0);
+  const now = u => { const w = days.find(x => x.uid === u && x.live); return w ? (w.state === 'pause' ? ['wait', 'En pausa'] : ['ok', 'Trabajando']) : ['', 'Fuera']; };
+  const short = ms => `${Math.floor(ms / 36e5)}h${pad(Math.floor(ms % 36e5 / 6e4))}`;
+  const cell = ws => {
+    if (!ws) return '<td class="cb-empty">·</td>';
+    const a = [...ws].sort((x, y) => (x.start || x.events[0]).at - (y.start || y.events[0]).at), f = a[0], l = a[a.length - 1];
+    const end = l.end ? hm(l.end.at) : l.live ? '<span class="status ok">ahora</span>' : '<span class="status wait">sin salida</span>';
+    const fix = ws.some(w => w.events.some(e => e.manual));
+    return `<td><div class="num">${f.start ? hm(f.start.at) : '—'}</div><div class="num">${end}</div><b class="num">${short(ws.reduce((t, w) => t + w.worked, 0))}${fix ? '<span title="Corregido a mano">*</span>' : ''}</b></td>`;
+  };
+  const rows = Object.keys(by).sort().reverse();
+  return `<div class="table-wrap"><table class="clock-board" style="--n:${cols.length}"><thead><tr><th></th>${cols.map(u => { const [c, t] = now(u); return `<th><button class="cb-who" data-who="${u}" title="Ver detalle"><span class="cb-dot ${c}" title="${t}"></span>${esc(clkName(u).split(' ')[0])}</button><small class="num">${short(total(u))}</small></th>`; }).join('')}</tr></thead>
+  <tbody>${rows.length ? rows.map(d => `<tr><th class="num">${fmtDay(d, { weekday:'short', day:'numeric' })}</th>${cols.map(u => cell(by[d][u])).join('')}</tr>`).join('') : `<tr><td colspan="${cols.length + 1}" class="muted">No hay fichajes este mes.</td></tr>`}</tbody></table></div>
+  <p class="muted" style="font-size:12px">Cada casilla: entrada, salida y horas trabajadas. Pulsa un nombre para ver su detalle con pausas y ubicación. * corregido a mano.</p>`;
+}
 function viewFichajes(){
   const own = (S.clock || []).filter(e => e.uid === selfId()).sort((a, b) => a.at - b.at);
   const recent = own.filter(e => Date.now() - e.at < 20 * 36e5), last = recent[recent.length - 1], st = last ? last.kind : 'out';
@@ -4613,8 +4639,8 @@ function viewFichajes(){
     ${adm ? `<label class="field">Persona<select id="ck_uid"><option value="">Todo el equipo</option>${people.map(u => `<option value="${u}" ${u === CLK.uid ? 'selected' : ''}>${esc(clkName(u))}</option>`).join('')}</select></label>` : ''}
     <div class="actions" style="margin:0;align-self:flex-end"><button class="btn ghost sm" id="ck_csv">Descargar Excel</button>${adm ? '<button class="btn ghost sm" id="ck_add">Añadir fichaje olvidado</button>' : ''}</div>
   </div>
-  ${adm && Object.keys(totals).length > 1 ? `<div class="clock-totals">${Object.entries(totals).map(([u, ms]) => `<span class="chip">${esc(clkName(u))}: <b>${dur(ms)}</b></span>`).join('')}</div>` : ''}
-  ${LIVE && !CLK.data ? `<div class="empty">${ISO()}<p>Cargando…</p></div>` : days.length ? `<div class="table-wrap"><table class="clock-table"><thead><tr><th>Día</th>${adm ? '<th>Persona</th>' : ''}<th>Entrada</th><th>Salida</th><th>Pausas</th><th class="r">Trabajado</th></tr></thead><tbody>
+  ${adm && CLK.uid && Object.keys(totals).length > 1 ? `<div class="clock-totals">${Object.entries(totals).map(([u, ms]) => `<span class="chip">${esc(clkName(u))}: <b>${dur(ms)}</b></span>`).join('')}</div>` : ''}
+  ${LIVE && !CLK.data ? `<div class="empty">${ISO()}<p>Cargando…</p></div>` : adm && !CLK.uid ? clockBoard(days, people) : days.length ? `<div class="table-wrap"><table class="clock-table"><thead><tr><th>Día</th>${adm ? '<th>Persona</th>' : ''}<th>Entrada</th><th>Salida</th><th>Pausas</th><th class="r">Trabajado</th></tr></thead><tbody>
     ${days.map(w => `<tr><td class="num">${fmtDay(w.day, { weekday:'short', day:'numeric', month:'short' })}</td>${adm ? `<td>${esc(clkName(w.uid))}</td>` : ''}
       <td class="num">${w.start ? hm(w.start.at) : '—'} ${mapLink(w.start)}</td>
       <td class="num">${w.end ? hm(w.end.at) : w.live ? '<span class="status ok">en curso</span>' : '<span class="status wait">sin salida</span>'} ${mapLink(w.end)}</td>
@@ -4635,6 +4661,7 @@ function afterFichajes(root){
   });
   const mo = root.querySelector('#ck_month'); mo.onchange = () => { if (!mo.value) return; CLK.month = mo.value; CLK.data = null; render(); };
   const us = root.querySelector('#ck_uid'); if (us) us.onchange = () => { CLK.uid = us.value; CLK.data = null; render(); };
+  root.querySelectorAll('[data-who]').forEach(b => b.onclick = () => { CLK.uid = b.dataset.who; CLK.data = null; render(); });
   root.querySelector('#ck_csv').onclick = () => {
     const ev = monthEvents().slice().sort((a, b) => a.at - b.at);
     if (!ev.length) return toast('No hay fichajes este mes.');
