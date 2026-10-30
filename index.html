@@ -68,10 +68,14 @@ header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;backgroun
 .badge{position:absolute;top:-3px;right:-3px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--accent);color:#fff;font-size:11px;font-weight:600;display:grid;place-items:center}
 .who{display:flex;align-items:center;gap:6px;font-size:12px}
 .who select{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 10px;font-size:13px;max-width:150px}
-nav.tabs{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none;padding-bottom:0}
+nav.tabs{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;width:fit-content;max-width:100%;margin:0 auto 12px;padding:5px;background:var(--surface);border:1px solid var(--line);border-radius:999px;box-shadow:0 4px 14px rgba(62,76,56,.06)}
 nav.tabs::-webkit-scrollbar{display:none}
-.tab{border:0;background:none;padding:10px 14px 12px;font-weight:500;font-size:14px;color:var(--ink-2);border-bottom:2px solid transparent;white-space:nowrap}
-.tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+.tab{border:0;background:none;display:inline-flex;align-items:center;gap:7px;padding:9px 16px;border-radius:999px;font-weight:500;font-size:14px;color:var(--ink-2);white-space:nowrap;transition:background .15s,color .15s}
+.tab svg{width:17px;height:17px;flex:none}
+.tab:hover{background:var(--surface-2);color:var(--ink)}
+.tab[aria-selected="true"]{background:var(--brand);color:var(--on-brand)}
+.tab[aria-selected="true"] .tab-badge{background:var(--on-brand);color:var(--brand)}
+header.top .bar{position:relative}
 @media (max-width:560px){.logo{width:120px}.credit-label{display:none}}
 
 main{padding-block:24px 64px}
@@ -162,6 +166,16 @@ main{padding-block:24px 64px}
 .plan .was{font-size:15px;color:var(--ink-2);font-weight:400}.plan .left{color:var(--accent);font-weight:500}
 .promo{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 16px}.promo input{flex:1 1 200px;min-width:0;max-width:320px;text-transform:uppercase}
 .alert.opening{margin:0 0 14px}
+.cal-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}.cal-hd b{font-size:15px}
+.cal-nav{width:32px;height:32px;border-radius:50%;border:1px solid var(--line);background:var(--surface);font-size:18px;line-height:1;color:var(--ink)}.cal-nav:disabled{opacity:.35}
+.cal-g{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;text-align:center}.cal-g small{font-size:11px;color:var(--ink-2);font-weight:600;padding:2px 0}
+.cal-d{position:relative;aspect-ratio:1;display:grid;place-items:center;border-radius:10px;font-size:13.5px;border:0;background:var(--surface-2);color:var(--ink);font-variant-numeric:tabular-nums}
+button.cal-d:hover{outline:1.5px solid var(--brand)}.cal-d.on{background:var(--brand);color:var(--on-brand)}.cal-d.today:not(.on){outline:1.5px solid var(--accent)}
+.cal-d.off{background:none;color:var(--ink-2);opacity:.45}.cal-d.later{opacity:.7;text-decoration:underline dotted;text-underline-offset:3px}
+.cal-d i{position:absolute;bottom:4px;width:5px;height:5px;border-radius:50%;background:var(--accent)}.cal-d.on i{background:var(--on-brand)}
+.cal-note{font-size:12px;margin:10px 0 0}
+.cal-btn{display:none;align-items:center;gap:6px}.cal-btn svg{width:16px;height:16px}
+@media (max-width:880px){.cal-panel{display:none}.cal-btn{display:inline-flex}}
 .info{max-width:960px;margin:0 auto}.info-hero{text-align:center;padding:18px 0 6px}.info-hero h1{margin:8px 0 6px}.info-hero .iso-big{width:44px;height:auto;color:var(--ink)}
 .info-open{font-weight:600;color:var(--ink);margin:6px 0}.info-trial{display:inline-block;background:var(--surface-2);border-radius:999px;padding:6px 14px;margin:6px 0;font-size:14px}
 .info-week{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}.info-day h3{margin:0 0 8px;font-size:15px}.info-day ul{list-style:none;margin:0;padding:0;display:grid;gap:8px}
@@ -473,7 +487,7 @@ textarea,select{font:inherit;color:inherit;border:1px solid var(--line);backgrou
       <button class="tab" role="tab" data-tab="clientes">Clientes</button>
       <button class="tab" role="tab" data-tab="acceso">Acceso</button>
       <button class="tab" role="tab" data-tab="mensajes">Mensajes <span class="tab-badge num" id="msgBadge" hidden></span></button>
-      <button class="tab" role="tab" data-tab="perfil">Mi ficha</button>
+      <button class="tab" role="tab" data-tab="perfil"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8.5" r="4"/><path d="M4 20.5c1-4 4.2-6 8-6s7 2 8 6"/></svg>Mi ficha</button>
       <button class="tab" role="tab" data-tab="equipo">Equipo</button>
       <button class="tab" role="tab" data-tab="fichajes">Fichajes</button>
       <button class="tab" role="tab" data-tab="ajustes">Ajustes</button>
@@ -2820,7 +2834,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
 </script>
 <script>
 (() => {
-let CAP = 8, WAIT_MAX = 2, CANCEL_H = 12; const DAYS_AHEAD = 14;
+let CAP = 8, WAIT_MAX = 2, CANCEL_H = 12; const DAYS_AHEAD = 28;
 // Edición: 'alento' fija el diseño y el sector de Alento; 'multi' es la plantilla multisector para otros clientes.
 const EDITION = /*EDITION*/'alento';
 const KEY = EDITION === 'alento' ? 'alento-reservas-v1' : 'reservas-multisector-v1';
@@ -3021,7 +3035,7 @@ function seed(cfg = defaultCfg()){
       { uid:'u2', ts: now - 4*864e5, concept:'Bono 4', amount:54, method:'Bizum' }
     ],
     notifs:[
-      { uid:'u1', ts: now - 36e5, text:'Bienvenida a Alento. Reserva tus clases hasta con 14 días de antelación.', read:false },
+      { uid:'u1', ts: now - 36e5, text:'Bienvenida a Alento. Reserva tus clases hasta con 28 días de antelación.', read:false },
       { uid:'u2', ts: now - 72e5, text: demoFull ? `Estás la 1.ª en lista de espera para ${demoFull.type} del ${fmtDay(demoFull.date,{weekday:'long',day:'numeric'})} a las ${demoFull.time}.` : 'Bienvenida a Alento.', read:false },
       { uid:'u3', ts: now - 36e5, text:'Tu cuenta está activa. Compra un bono en Pagos para empezar a reservar.', read:false }
     ],
@@ -3203,7 +3217,7 @@ async function refresh(quiet){
   applyHydrate(h);
   if (L.need.length) loadMedia(L.need);
   if (h.profile.role === 'admin' && !Object.keys(h.center.week || {}).length){
-    // Primera vez que entra recepción: se sube la plantilla semanal y se crean las clases de los próximos 14 días.
+    // Primera vez que entra recepción: se sube la plantilla semanal y se crean las clases de los próximos 28 días.
     try { await rpc('save_config', { p_name:S.cfg.name, p_cfg:cfgPayload(), p_week:weekPayload() }); L.last = ''; return refresh(); }
     catch(e){ toast(errText(e)); }
   }
@@ -3520,7 +3534,9 @@ const ADMIN_TABS = ['clientes','horario','acceso','mensajes','equipo','fichajes'
 const STAFF_TABS = ['fichajes','horario','equipo'];
 const tabsFor = () => isAdmin() ? ADMIN_TABS : isStaff() ? STAFF_TABS : SOCIO_TABS;
 const SOCIO_TABS = ['horario','reservas','pagos','tienda','mensajes','perfil'];
+let tabIcons = false;
 function renderHeader(){
+  if (!tabIcons){ tabIcons = true; document.querySelectorAll('nav.tabs .tab').forEach(t => { const ic = document.querySelector(`.bn[data-tab="${t.dataset.tab}"] svg`); if (ic) t.prepend(ic.cloneNode(true)); }); }
   if (!NAMES[S.user]) S.user = GUEST;
   const own = S.cfg.name.trim() && S.cfg.name.trim().toLowerCase() !== 'alento';
   $('#brandLogo').toggleAttribute('hidden', own); $('#brandName').hidden = !own; $('#brandName').textContent = S.cfg.name;
@@ -3535,7 +3551,7 @@ function renderHeader(){
   whoSel.value = me();
   document.querySelectorAll('.tab, .bn').forEach(t => { t.setAttribute(t.classList.contains('tab') ? 'aria-selected' : 'aria-current', t.dataset.tab === S.tab); t.hidden = !tabsFor().includes(t.dataset.tab); });
   document.querySelector('.bottom-nav').hidden = isGuest();
-  document.querySelectorAll('[data-tab="equipo"]').forEach(t => { const l = isStaff() ? 'Mi ficha' : 'Equipo'; (t.querySelector('span') || t).textContent = l; });
+  document.querySelectorAll('[data-tab="equipo"]').forEach(t => { const l = isStaff() ? 'Mi ficha' : 'Equipo', sp = t.querySelector('span'); if (sp) sp.textContent = l; else if (t.lastChild && t.lastChild.nodeType === 3) t.lastChild.textContent = l; else t.append(l); });
   const um = unreadMsgs(me());
   ['#msgBadge','#msgBadge2'].forEach(id => { const mb = $(id); mb.hidden = !um; mb.textContent = um; });
   const mbtn = $('#meBtn'); mbtn.hidden = isAdmin() || isGuest() || isStaff(); $('#qrBtn').hidden = mbtn.hidden;
@@ -3583,6 +3599,31 @@ function bindActions(root){
   });
 }
 
+// Calendario del mes para saltar a un día concreto. Solo se pueden elegir días con clases ya abiertas a reserva.
+let calMonth = '';
+function calendarHTML(days){
+  const today = ymd(new Date()), set = new Set(days), last = days[days.length - 1] || today;
+  if (!calMonth) calMonth = (S.day || today).slice(0, 7);
+  const minM = today.slice(0, 7), maxM = (last > today ? last : today).slice(0, 7);
+  if (calMonth < minM) calMonth = minM; if (calMonth > maxM) calMonth = maxM;
+  const [y, m] = calMonth.split('-').map(Number), first = new Date(y, m - 1, 1), n = new Date(y, m, 0).getDate(), lead = (first.getDay() + 6) % 7;
+  const mine = d => S.classes.some(c => c.date === d && (c.booked.includes(me()) || c.wait.includes(me())));
+  let cells = '';
+  for (let i = 0; i < lead; i++) cells += '<span></span>';
+  for (let d = 1; d <= n; d++){
+    const ds = `${y}-${pad(m)}-${pad(d)}`, open = set.has(ds), later = !open && ds > last && (WEEK[new Date(ds + 'T12:00:00').getDay()] || []).length;
+    cells += open ? `<button type="button" class="cal-d ${ds === S.day ? 'on' : ''} ${ds === today ? 'today' : ''}" data-calday="${ds}">${d}${mine(ds) ? '<i></i>' : ''}</button>`
+      : `<span class="cal-d off ${later ? 'later' : ''}" ${later ? `title="Se abre a reserva ${DAYS_AHEAD} días antes"` : ''}>${d}</span>`;
+  }
+  const label = first.toLocaleDateString('es-ES', { month:'long', year:'numeric' });
+  return `<div class="cal"><div class="cal-hd"><button type="button" class="cal-nav" data-calm="-1" ${calMonth <= minM ? 'disabled' : ''} aria-label="Mes anterior">‹</button><b>${cap1(label)}</b><button type="button" class="cal-nav" data-calm="1" ${calMonth >= maxM ? 'disabled' : ''} aria-label="Mes siguiente">›</button></div>
+    <div class="cal-g">${['L','M','X','J','V','S','D'].map(x => `<small>${x}</small>`).join('')}${cells}</div>
+    <p class="muted cal-note">Puedes reservar hasta ${DAYS_AHEAD} días antes.${S.classes.some(c => c.booked.includes(me())) && !isAdmin() ? ' El punto marca tus reservas.' : ''}</p></div>`;
+}
+function bindCalendar(box, pick){
+  box.querySelectorAll('[data-calm]').forEach(b => b.onclick = () => { const [y, m] = calMonth.split('-').map(Number), d = new Date(y, m - 1 + +b.dataset.calm, 1); calMonth = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; pick(null); });
+  box.querySelectorAll('[data-calday]').forEach(b => b.onclick = () => pick(b.dataset.calday));
+}
 function viewHorario(){
   const days = [...new Set(S.classes.map(c => c.date))].filter(d => d >= ymd(new Date())).sort();
   if (!days.includes(S.day)) S.day = days[0];
@@ -3600,7 +3641,7 @@ function viewHorario(){
       <svg class="mark" viewBox="0 0 10 13.5" aria-hidden="true"><use href="#alento-iso"/></svg>
     </section>`;
   const soon = OPEN && OPEN > ymd(new Date()) ? `<div class="alert opening"><b>Abrimos el ${fmtDay(OPEN, { day:'numeric', month:'long' })}.</b> Ya puedes reservar tus primeras ${SEC.units}.</div>` : '';
-  return `${hero}${soon}<div class="view-head"><div><h1>Horario de ${SEC.units}</h1><p class="muted">${cap1(fmtDay(S.day))}</p></div></div>
+  return `${hero}${soon}<div class="view-head"><div><h1>Horario de ${SEC.units}</h1><p class="muted">${cap1(fmtDay(S.day))}</p></div><button class="btn ghost sm cal-btn" id="calBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="3"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg>Calendario</button></div>
   <div class="layout">
     <section style="min-width:0">
       <div class="days" role="group" aria-label="Elegir día">${days.map(d => {
@@ -3611,6 +3652,7 @@ function viewHorario(){
         : `<div class="empty">${ISO()}<p>${days.length && (WEEK[new Date(S.day+'T12:00:00').getDay()]||[]).length ? `No hay ${SEC.units} de este tipo ese día.` : 'El centro está cerrado este día.'}</p></div>`}</div>
     </section>
     <aside class="side">
+      <div class="panel cal-panel" id="calSide">${calendarHTML(days)}</div>
       ${isAdmin() ? `<div class="panel balance"><div class="desc" style="opacity:.8">Recepción</div><p style="margin:8px 0 0">Desde cada clase puedes enviar un aviso a las personas apuntadas, por ejemplo si cambia el horario o se cancela.</p><button class="btn" id="sideMsg">Ir a mensajes</button></div>` :
       `<div class="panel balance"><div class="desc" style="opacity:.8">Tu bono</div><div class="big num" style="margin-top:8px">${n}</div><div>${U(n)} ${n === 1 ? 'disponible' : 'disponibles'}</div><button class="btn" id="sidePay">${n ? 'Recargar bono' : 'Comprar bono'}</button></div>`}
       <div class="panel"><h2>Cómo funcionan las reservas</h2><ul class="rules">
@@ -3631,6 +3673,13 @@ function afterHorario(root){
   const hr = root.querySelector('#heroRes'); if (hr) hr.onclick = () => setTab('reservas');
   const hp = root.querySelector('#heroPay'); if (hp) hp.onclick = () => setTab('pagos');
   const sel = root.querySelector('.day[aria-pressed="true"]'); sel && sel.scrollIntoView({block:'nearest',inline:'nearest'});
+  const days = [...new Set(S.classes.map(c => c.date))].filter(d => d >= ymd(new Date())).sort();
+  const go = d => { if (d){ S.day = d; S.filter = 'Todas'; calMonth = d.slice(0, 7); save(); } render(); };
+  const side = root.querySelector('#calSide'); if (side) bindCalendar(side, go);
+  const cb = root.querySelector('#calBtn'); if (cb) cb.onclick = () => {
+    const open = () => modal(`<h2>Elige un día</h2>${calendarHTML(days)}<div class="actions"><button class="btn ghost" data-close>Cerrar</button></div>`, m => bindCalendar(m, d => { if (d){ closeLayer(); go(d); } else open(); }));
+    open();
+  };
 }
 
 function viewReservas(){

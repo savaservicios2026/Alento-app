@@ -190,7 +190,7 @@ begin
   select * into c from centers where id = p_center;
   w := c.week;
   if w is null or w = '{}'::jsonb then return; end if;
-  for i in 0..13 loop
+  for i in 0..27 loop
     d := start_day(c) + i;
     for e in select * from jsonb_array_elements(coalesce(w -> (extract(dow from d)::int)::text, '[]'::jsonb)) loop
       insert into classes (center_id, date, time, type, instr, level, cap, starts_at)
@@ -271,7 +271,7 @@ begin
         'mine', (select b.status from bookings b where b.class_id = k.id and b.profile_id = p.id),
         'pos', (select count(*) from bookings b where b.class_id = k.id and b.status = 'wait'
                  and b.created_at <= (select m.created_at from bookings m where m.class_id = k.id and m.profile_id = p.id and m.status = 'wait'))
-      ) j from classes k where k.center_id = c.id and k.date between today_es() - 1 and start_day(c) + 14) t),
+      ) j from classes k where k.center_id = c.id and k.date between today_es() - 1 and start_day(c) + 28) t),
     'clients', (select coalesce(jsonb_object_agg(x.id, lite_ficha(x.ficha) || jsonb_build_object('_credits', x.credits, '_cuenta', x.auth_id is not null, '_subs', x.subs)), '{}'::jsonb)
                 from profiles x where x.center_id = c.id and x.role = 'socio' and (adm or x.id = p.id)),
     'messages', (select coalesce(jsonb_agg(jsonb_build_object('id', m.id, 'thread', m.thread, 'from_center', m.from_center, 'text', m.text, 'kind', m.kind, 'cat', m.cat, 'read', m.read, 'ts', ms(m.created_at)) order by m.created_at), '[]'::jsonb)
