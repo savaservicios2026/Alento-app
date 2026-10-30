@@ -41,6 +41,14 @@ Cuando cambie `supabase.sql`, vuelve a pegarlo entero en el SQL Editor y pulsa R
 - `?info` muestra horario semanal, tarifas, clase de prueba, apertura y contacto sin iniciar sesión. Datos de `public_info(center)`, la única función abierta a `anon` (no devuelve clientes ni códigos).
 - Ajustes → «Página pública y pegatina»: contacto (`cfg.contact`: dir, tel, wa, insta) y botón «Imprimir pegatina» (A5 con el QR a `?info`).
 
+### Gestión: estadísticas, premios, contabilidad y tienda
+- Pestaña Gestión (solo recepción) con `admin_stats(meses)`: clases pasadas (cupo, reservas, entradas con QR), clientes (total, con QR, primera, última, por mes), altas, cobros, gastos y premios. La app calcula los periodos.
+- Clases hechas = reservas confirmadas de clases ya empezadas (no depende de leer el QR).
+- Premios: `cfg.rewards` [{id, name, n, period 'mes'|'total', credits, gift, on}]. `award_rewards` los da al abrir la app el cliente (hydrate) o al abrir Gestión; tabla `rewards_won` (única por persona, premio y periodo). Las clases se suman al bono; el regalo queda «por entregar».
+- Historial: `client_history(uid)` (el propio cliente o recepción).
+- Contabilidad: ingresos de `payments` (forma de pago agrupada en Efectivo, Tarjeta, Bizum, Transferencia, Otros), gastos en `expenses` (`admin_expense`, `admin_expense_del`), cobros a mano con `admin_income`. Excel (CSV con «;»).
+- Tienda: productos en `cfg.products` [{id, name, price, sizes, desc, cat, photo, on}], fotos en el bucket público `tienda`. `shop_order` pone el precio desde cfg y crea el pedido (`orders`) y el cobro; `admin_order_status` (pendiente, listo, entregado, cancelado).
+
 ## Pendiente
 
 - Archivos adjuntos: de momento se guarda solo el nombre (falta Supabase Storage).

@@ -118,6 +118,44 @@ create table if not exists clock_events (
 );
 create index if not exists clock_events_by_person on clock_events (profile_id, at);
 
+-- Premios por objetivos conseguidos (cfg.rewards). Uno por persona, objetivo y periodo ('total' o el mes 'AAAA-MM').
+create table if not exists rewards_won (
+  id bigserial primary key,
+  center_id text not null references centers(id),
+  profile_id uuid not null references profiles(id) on delete cascade,
+  goal_id text not null,
+  period text not null,
+  label text not null,
+  credits int not null default 0,
+  delivered boolean not null default false,
+  created_at timestamptz not null default now(),
+  unique (profile_id, goal_id, period)
+);
+
+-- Gastos que apunta recepción (contabilidad). Los ingresos salen de payments.
+create table if not exists expenses (
+  id bigserial primary key,
+  center_id text not null references centers(id),
+  date date not null,
+  concept text not null,
+  category text not null default 'Otros',
+  amount numeric(10,2) not null check (amount >= 0),
+  created_by uuid references profiles(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+-- Pedidos de la tienda. Los productos y precios están en cfg.products; las fotos, en el bucket público 'tienda'.
+create table if not exists orders (
+  id bigserial primary key,
+  center_id text not null references centers(id),
+  profile_id uuid references profiles(id) on delete set null,
+  items jsonb not null,               -- [{"id":"p1","name":"Calcetines","size":"M","qty":2,"price":12}]
+  total numeric(10,2) not null,
+  method text not null default '',
+  status text not null default 'pendiente' check (status in ('pendiente','listo','entregado','cancelado')),
+  created_at timestamptz not null default now()
+);
+
 -- Contador de cambios por centro: la app pregunta solo este número y descarga todo únicamente cuando cambia.
 create table if not exists center_rev (
   center_id text primary key references centers(id) on delete cascade,
@@ -125,7 +163,7 @@ create table if not exists center_rev (
 );
 
 do $$ declare t text; begin
-  foreach t in array array['centers','profiles','classes','bookings','notifs','messages','payments','access_logs','center_rev','clock_events'] loop
+  foreach t in array array['centers','profiles','classes','bookings','notifs','messages','payments','access_logs','center_rev','clock_events','rewards_won','expenses','orders'] loop
     execute format('alter table %I enable row level security', t);
     execute format('revoke all on %I from anon, authenticated', t);
   end loop;
@@ -149,7 +187,7 @@ begin
   return null;
 end $$;
 do $$ declare t text; begin
-  foreach t in array array['centers','profiles','classes','bookings','notifs','messages','payments','access_logs','clock_events'] loop
+  foreach t in array array['centers','profiles','classes','bookings','notifs','messages','payments','access_logs','clock_events','rewards_won','orders'] loop
     execute format('drop trigger if exists bump_rev on %I', t);
     execute format('create trigger bump_rev after insert or update or delete on %I for each row execute function bump_rev()', t);
   end loop;
@@ -248,6 +286,7 @@ begin
   select * into c from centers where id = p.center_id;
   perform ensure_classes(c.id);
   adm := p.role = 'admin';
+  if p.role = 'socio' then perform award_rewards(p.id); select * into p from profiles where id = p.id; end if;
   return jsonb_build_object(
     'rev', (select coalesce((select r.rev from center_rev r where r.center_id = c.id), 0)),
     'staff', case when adm then (select coalesce(jsonb_object_agg(x.id, jsonb_build_object('email', x.email, 'key', x.staff_key, 'role', x.role, 'cuenta', x.auth_id is not null, 'worker', x.worker,
@@ -255,6 +294,9 @@ begin
                  from profiles x where x.center_id = c.id and (x.role = 'staff' or x.staff_key is not null)) end,
     'clock', (select coalesce(jsonb_agg(jsonb_build_object('id', e.id, 'uid', e.profile_id, 'kind', e.kind, 'at', ms(e.at), 'manual', e.manual) order by e.at, e.id), '[]'::jsonb)
               from clock_events e where e.profile_id = p.id and e.at > now() - interval '36 hours'),
+    'rewards', case when p.role = 'socio' then reward_progress(p) end,
+    'orders', (select coalesce(jsonb_agg(jsonb_build_object('id', o.id, 'uid', o.profile_id, 'items', o.items, 'total', o.total, 'method', o.method, 'status', o.status, 'ts', ms(o.created_at)) order by o.created_at desc), '[]'::jsonb)
+               from orders o where o.center_id = c.id and (adm or o.profile_id = p.id) and (o.status in ('pendiente','listo') or o.created_at > now() - interval '60 days')),
     'profile', jsonb_build_object('id', p.id, 'role', p.role, 'staff_key', p.staff_key, 'worker', case when adm then p.worker else p.worker - 'notas' end, 'email', p.email, 'credits', p.credits, 'wallet', p.wallet, 'subs', p.subs, 'ficha', lite_ficha(p.ficha)),
     'center', jsonb_build_object('id', c.id, 'name', c.name, 'week', c.week, 'test_payments', c.test_payments,
       'cfg', case when adm then c.cfg else (c.cfg - 'codes') || jsonb_build_object('has_codes', jsonb_typeof(c.cfg->'codes') = 'array' and jsonb_array_length(c.cfg->'codes') > 0) end),
@@ -562,6 +604,198 @@ begin
    where k.center_id = a.center_id and k.starts_at > now();
 end $$;
 
+-- ---------- estadísticas, historial y premios ----------
+-- Clases hechas = reservas confirmadas de clases que ya han empezado (con o sin lectura del QR en la entrada).
+create or replace function done_count(p_profile uuid, p_from timestamptz, p_to timestamptz) returns int
+language sql stable security definer set search_path = public as $$
+  select count(*)::int from bookings b join classes k on k.id = b.class_id
+   where b.profile_id = p_profile and b.status = 'booked' and k.starts_at < least(now(), p_to) and k.starts_at >= p_from
+$$;
+
+-- Da los premios que la persona ya ha ganado y aún no tiene. Las clases de regalo se suman al bono al momento.
+create or replace function award_rewards(p_profile uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare p profiles; c centers; g jsonb; per text; f timestamptz; t timestamptz; n int; nid bigint; cr int; lbl text;
+begin
+  select * into p from profiles where id = p_profile;
+  if p.id is null or p.role <> 'socio' then return; end if;
+  select * into c from centers where id = p.center_id;
+  for g in select * from jsonb_array_elements(case when jsonb_typeof(c.cfg->'rewards') = 'array' then c.cfg->'rewards' else '[]'::jsonb end) loop
+    continue when coalesce((g->>'on')::boolean, true) = false or coalesce((g->>'n')::int, 0) < 1 or coalesce(g->>'id', '') = '';
+    if g->>'period' = 'mes' then
+      per := to_char(now() at time zone 'Europe/Madrid', 'YYYY-MM');
+      f := date_trunc('month', now() at time zone 'Europe/Madrid') at time zone 'Europe/Madrid'; t := now();
+    else
+      per := 'total'; f := '-infinity'; t := now();
+    end if;
+    n := done_count(p.id, f, t);
+    continue when n < (g->>'n')::int;
+    cr := greatest(coalesce((g->>'credits')::int, 0), 0);
+    lbl := left(coalesce(nullif(g->>'name', ''), 'Premio'), 120);
+    insert into rewards_won (center_id, profile_id, goal_id, period, label, credits, delivered)
+    values (p.center_id, p.id, g->>'id', per, lbl, cr, coalesce(nullif(g->>'gift', ''), '') = '')
+    on conflict (profile_id, goal_id, period) do nothing returning id into nid;
+    continue when nid is null;
+    if cr > 0 then update profiles set credits = credits + cr where id = p.id; end if;
+    perform notify_user(p.center_id, p.id, '¡Premio conseguido! ' || lbl || ': ' ||
+      concat_ws(' y ', case when cr > 0 then cr || case when cr = 1 then ' clase de regalo ya en tu bono' else ' clases de regalo ya en tu bono' end end,
+                       case when coalesce(g->>'gift', '') <> '' then left(g->>'gift', 120) || ' (recógelo en recepción)' end) || '.');
+    if coalesce(g->>'gift', '') <> '' then
+      insert into notifs (center_id, to_admin, text) values (p.center_id, true,
+        'Premio para ' || trim(coalesce(p.ficha->>'nombre', '') || ' ' || coalesce(p.ficha->>'apellidos', '')) || ': entregar ' || left(g->>'gift', 120) || '.');
+    end if;
+  end loop;
+end $$;
+
+-- Progreso de cada objetivo para la persona (lo que ve en la app).
+create or replace function reward_progress(p profiles) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(jsonb_build_object('id', g->>'id', 'name', g->>'name', 'n', (g->>'n')::int, 'period', coalesce(g->>'period', 'total'),
+    'credits', coalesce((g->>'credits')::int, 0), 'gift', coalesce(g->>'gift', ''),
+    'done', case when g->>'period' = 'mes' then done_count(p.id, date_trunc('month', now() at time zone 'Europe/Madrid') at time zone 'Europe/Madrid', now())
+                 else done_count(p.id, '-infinity', now()) end,
+    'won', exists (select 1 from rewards_won w where w.profile_id = p.id and w.goal_id = g->>'id'
+                   and w.period = case when g->>'period' = 'mes' then to_char(now() at time zone 'Europe/Madrid', 'YYYY-MM') else 'total' end))), '[]'::jsonb)
+  from centers c, jsonb_array_elements(case when jsonb_typeof(c.cfg->'rewards') = 'array' then c.cfg->'rewards' else '[]'::jsonb end) g
+  where c.id = p.center_id and coalesce((g->>'on')::boolean, true) and coalesce((g->>'n')::int, 0) > 0
+$$;
+
+-- Historial de clases de una persona: la propia, o cualquiera del centro para recepción.
+create or replace function client_history(p_uid uuid) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare me profiles; t profiles;
+begin
+  me := me_profile();
+  select * into t from profiles where id = p_uid;
+  if me.id is null or t.id is null or t.center_id <> me.center_id or not (me.role = 'admin' or me.id = t.id) then raise exception 'FORBIDDEN'; end if;
+  return jsonb_build_object(
+    'classes', (select coalesce(jsonb_agg(jsonb_build_object('date', k.date, 'time', k.time, 'type', k.type, 'instr', k.instr, 'attended', b.attended) order by k.starts_at desc), '[]'::jsonb)
+                from bookings b join classes k on k.id = b.class_id where b.profile_id = t.id and b.status = 'booked' and k.starts_at < now()),
+    'rewards', (select coalesce(jsonb_agg(jsonb_build_object('id', w.id, 'label', w.label, 'credits', w.credits, 'delivered', w.delivered, 'period', w.period, 'ts', ms(w.created_at)) order by w.created_at desc), '[]'::jsonb)
+                from rewards_won w where w.profile_id = t.id));
+end $$;
+
+-- Estadísticas del centro para recepción. p_months: cuántos meses hacia atrás.
+create or replace function admin_stats(p_months int default 6) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare a profiles; f date; x uuid;
+begin
+  a := require_admin();
+  for x in select id from profiles where center_id = a.center_id and role = 'socio' loop perform award_rewards(x); end loop;
+  f := (date_trunc('month', today_es()) - make_interval(months => greatest(least(coalesce(p_months, 6), 24), 1) - 1))::date;
+  return jsonb_build_object(
+    'from', f,
+    -- una fila por clase pasada: fecha, hora, actividad, monitor, cupo, reservas y entradas leídas
+    'classes', (select coalesce(jsonb_agg(jsonb_build_array(k.date, k.time, k.type, k.instr, k.cap,
+                  (select count(*) from bookings b where b.class_id = k.id and b.status = 'booked'),
+                  (select count(*) from bookings b where b.class_id = k.id and b.attended)) order by k.starts_at), '[]'::jsonb)
+                from classes k where k.center_id = a.center_id and k.date >= f and k.starts_at < now()),
+    -- por cliente: clases hechas en total, entradas leídas, primera, última y clases por mes
+    'clients', (select coalesce(jsonb_object_agg(s.pid, jsonb_build_array(s.total, s.att, s.first, s.last,
+                  (select jsonb_object_agg(mm.m, mm.n) from (select to_char(k2.date, 'YYYY-MM') m, count(*) n from bookings b2 join classes k2 on k2.id = b2.class_id
+                    where b2.profile_id = s.pid and b2.status = 'booked' and k2.starts_at < now() group by 1) mm))), '{}'::jsonb) from (
+                  select b.profile_id pid, count(*) total, count(*) filter (where b.attended) att, min(k.date) first, max(k.date) last
+                  from bookings b join classes k on k.id = b.class_id
+                  where k.center_id = a.center_id and b.status = 'booked' and k.starts_at < now() group by b.profile_id) s),
+    'signups', (select coalesce(jsonb_agg(to_char(p.created_at at time zone 'Europe/Madrid', 'YYYY-MM-DD')), '[]'::jsonb)
+                from profiles p where p.center_id = a.center_id and p.role = 'socio' and p.created_at >= f),
+    -- cobros: fecha, importe, ¿tienda?, concepto, forma de pago, cliente
+    'payments', (select coalesce(jsonb_agg(jsonb_build_array(to_char(y.created_at at time zone 'Europe/Madrid', 'YYYY-MM-DD'), y.amount, y.concept like 'Tienda%', y.concept, y.method, y.profile_id) order by y.created_at), '[]'::jsonb)
+                 from payments y where y.center_id = a.center_id and y.created_at >= f),
+    'expenses', (select coalesce(jsonb_agg(jsonb_build_array(e.id, e.date, e.concept, e.category, e.amount) order by e.date, e.id), '[]'::jsonb)
+                 from expenses e where e.center_id = a.center_id and e.date >= f),
+    'rewards', (select coalesce(jsonb_agg(jsonb_build_object('id', w.id, 'uid', w.profile_id, 'label', w.label, 'credits', w.credits, 'delivered', w.delivered, 'ts', ms(w.created_at)) order by w.created_at desc), '[]'::jsonb)
+                from rewards_won w where w.center_id = a.center_id and w.created_at >= f));
+end $$;
+
+create or replace function admin_reward_delivered(p_id bigint) returns void
+language plpgsql security definer set search_path = public as $$
+declare a profiles;
+begin
+  a := require_admin();
+  update rewards_won set delivered = true where id = p_id and center_id = a.center_id;
+end $$;
+
+create or replace function admin_expense(p_date date, p_concept text, p_category text, p_amount numeric) returns bigint
+language plpgsql security definer set search_path = public as $$
+declare a profiles; nid bigint;
+begin
+  a := require_admin();
+  if coalesce(trim(p_concept), '') = '' or p_amount is null or p_amount < 0 or p_date is null then raise exception 'BAD_EXPENSE'; end if;
+  insert into expenses (center_id, date, concept, category, amount, created_by)
+  values (a.center_id, p_date, left(trim(p_concept), 200), left(coalesce(nullif(trim(p_category), ''), 'Otros'), 60), round(p_amount, 2), a.id) returning id into nid;
+  return nid;
+end $$;
+
+-- Cobro apuntado a mano en recepción (venta en mostrador, clase suelta en efectivo…). No suma clases.
+create or replace function admin_income(p_date date, p_concept text, p_amount numeric, p_method text) returns bigint
+language plpgsql security definer set search_path = public as $$
+declare a profiles; nid bigint;
+begin
+  a := require_admin();
+  if coalesce(trim(p_concept), '') = '' or p_amount is null or p_amount <= 0 or p_date is null or p_date > today_es() then raise exception 'BAD_INCOME'; end if;
+  insert into payments (center_id, profile_id, concept, amount, method, created_at)
+  values (a.center_id, null, left(trim(p_concept), 200), round(p_amount, 2), left(coalesce(p_method, ''), 100),
+          case when p_date = today_es() then now() else (p_date + time '12:00') at time zone 'Europe/Madrid' end) returning id into nid;
+  return nid;
+end $$;
+
+create or replace function admin_expense_del(p_id bigint) returns void
+language plpgsql security definer set search_path = public as $$
+declare a profiles;
+begin
+  a := require_admin();
+  delete from expenses where id = p_id and center_id = a.center_id;
+end $$;
+
+-- Pedido de la tienda: el precio lo pone el servidor a partir de cfg.products (no se fía del que manda la app).
+create or replace function shop_order(p_items jsonb, p_method text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare me profiles; c centers; it jsonb; pr jsonb; q int; lines jsonb := '[]'; tot numeric := 0; oid bigint; names text;
+begin
+  me := me_profile();
+  if me.id is null then raise exception 'FORBIDDEN'; end if;
+  select * into c from centers where id = me.center_id;
+  for it in select * from jsonb_array_elements(coalesce(p_items, '[]')) loop
+    select x into pr from jsonb_array_elements(case when jsonb_typeof(c.cfg->'products') = 'array' then c.cfg->'products' else
+      '[{"id":"tee","name":"Camiseta Alento","price":24},{"id":"socks","name":"Calcetines grip","price":12},{"id":"towel","name":"Toalla","price":16},
+        {"id":"bottle","name":"Botella","price":18},{"id":"tote","name":"Tote bag","price":14},{"id":"kit","name":"Kit de bienvenida","price":59},
+        {"id":"mat","name":"Esterilla de pilates","price":35},{"id":"ring","name":"Aro de pilates","price":22},{"id":"band","name":"Bandas elásticas","price":15},
+        {"id":"ball","name":"Pelota pequeña","price":9}]'::jsonb end) x
+     where x->>'id' = it->>'id' and coalesce((x->>'on')::boolean, true) limit 1;
+    if pr is null then raise exception 'NOT_FOUND'; end if;
+    q := greatest(least(coalesce((it->>'qty')::int, 1), 20), 1);
+    lines := lines || jsonb_build_object('id', pr->>'id', 'name', pr->>'name', 'size', nullif(left(coalesce(it->>'size', ''), 20), ''), 'qty', q, 'price', (pr->>'price')::numeric);
+    tot := tot + q * (pr->>'price')::numeric;
+  end loop;
+  if jsonb_array_length(lines) = 0 then raise exception 'EMPTY'; end if;
+  insert into orders (center_id, profile_id, items, total, method) values (me.center_id, me.id, lines, tot, left(coalesce(p_method, ''), 100)) returning id into oid;
+  select string_agg((l->>'qty') || ' × ' || (l->>'name') || coalesce(' (' || (l->>'size') || ')', ''), ', ') into names from jsonb_array_elements(lines) l;
+  insert into payments (center_id, profile_id, concept, amount, method)
+  values (me.center_id, me.id, left('Tienda · ' || names, 200), tot, left(coalesce(p_method, ''), 100));
+  perform notify_user(me.center_id, me.id, 'Pedido confirmado (' || to_char(tot, 'FM999990.00') || ' €). Te avisamos cuando esté listo en recepción.');
+  insert into notifs (center_id, to_admin, text) values (me.center_id, true,
+    'Pedido de ' || trim(coalesce(me.ficha->>'nombre', '') || ' ' || coalesce(me.ficha->>'apellidos', '')) || ': ' || names || '.');
+  return jsonb_build_object('id', oid, 'total', tot);
+end $$;
+
+create or replace function admin_order_status(p_id bigint, p_status text) returns void
+language plpgsql security definer set search_path = public as $$
+declare a profiles; o orders;
+begin
+  a := require_admin();
+  if p_status not in ('pendiente','listo','entregado','cancelado') then raise exception 'BAD_STATUS'; end if;
+  update orders set status = p_status where id = p_id and center_id = a.center_id returning * into o;
+  if o.id is null then raise exception 'NOT_FOUND'; end if;
+  if p_status = 'listo' and o.profile_id is not null then perform notify_user(o.center_id, o.profile_id, 'Tu pedido ya está listo. Recógelo en recepción.'); end if;
+end $$;
+
+-- Fotos de la tienda: bucket público; solo recepción sube o borra en la carpeta de su centro.
+create or replace function tienda_access(p_name text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from profiles p where p.auth_id = auth.uid() and p.role = 'admin' and split_part(p_name, '/', 1) = p.center_id)
+$$;
+
 -- Página pública (QR de la pegatina): nombre, horario, tarifas, prueba gratis, apertura y contacto. Sin datos de clientes ni códigos.
 create or replace function public_info(p_center text) returns jsonb
 language sql stable security definer set search_path = public as $$
@@ -705,19 +939,29 @@ do $$ begin
     execute $q$create policy "equipo leer" on storage.objects for select to authenticated using (bucket_id = 'equipo' and public.equipo_access(name, false))$q$;
     execute $q$create policy "equipo subir" on storage.objects for insert to authenticated with check (bucket_id = 'equipo' and public.equipo_access(name, true))$q$;
     execute $q$create policy "equipo borrar" on storage.objects for delete to authenticated using (bucket_id = 'equipo' and public.equipo_access(name, true))$q$;
+    execute $q$insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types) values ('tienda', 'tienda', true, 2097152, array['image/jpeg','image/png','image/webp']) on conflict (id) do nothing$q$;
+    execute 'drop policy if exists "tienda leer" on storage.objects';
+    execute $q$create policy "tienda leer" on storage.objects for select using (bucket_id = 'tienda')$q$;
+    execute 'drop policy if exists "tienda subir" on storage.objects';
+    execute 'drop policy if exists "tienda borrar" on storage.objects';
+    execute $q$create policy "tienda subir" on storage.objects for insert to authenticated with check (bucket_id = 'tienda' and public.tienda_access(name))$q$;
+    execute $q$create policy "tienda borrar" on storage.objects for delete to authenticated using (bucket_id = 'tienda' and public.tienda_access(name))$q$;
   end if;
 end $$;
 
 -- Solo las funciones públicas de la app se pueden llamar desde fuera.
 do $$ declare f text; begin
   foreach f in array array['me_profile()','ensure_classes(text)','notify_user(text,uuid,text)','promote(uuid)','require_admin()','handle_new_user()',
-                           'start_day(centers)','plan_of(centers,text)','code_pct(centers,text)','bump_rev()','lite_ficha(jsonb)'] loop
+                           'start_day(centers)','plan_of(centers,text)','code_pct(centers,text)','bump_rev()','lite_ficha(jsonb)',
+                           'done_count(uuid,timestamptz,timestamptz)','award_rewards(uuid)','reward_progress(profiles)'] loop
     execute format('revoke execute on function %s from public, anon, authenticated', f);
   end loop;
   foreach f in array array['hydrate()','book_class(uuid)','cancel_booking(uuid)','buy_plan(text,text,text)','check_code(text)','my_rev()','client_media(uuid[])','push(jsonb)',
                            'admin_create_client(jsonb)','admin_add_credits(uuid,int,numeric,text,text)','admin_baja(uuid)','save_config(text,jsonb,jsonb)',
                            'clock(text,double precision,double precision,real)','clock_month(text,uuid)','admin_clock_add(uuid,text,timestamptz,text)','admin_set_staff(text,text)',
-                           'save_worker(uuid,jsonb)','equipo_access(text,boolean)'] loop
+                           'save_worker(uuid,jsonb)','equipo_access(text,boolean)',
+                           'client_history(uuid)','admin_stats(int)','admin_reward_delivered(bigint)',
+                           'admin_expense(date,text,text,numeric)','admin_expense_del(bigint)','admin_income(date,text,numeric,text)','shop_order(jsonb,text)','admin_order_status(bigint,text)','tienda_access(text)'] loop
     execute format('revoke execute on function %s from public, anon', f);
     execute format('grant execute on function %s to authenticated', f);
   end loop;
