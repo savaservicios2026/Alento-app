@@ -96,6 +96,27 @@ create table if not exists access_logs (
   created_at timestamptz not null default now()
 );
 
+-- Equipo: role 'staff' = monitor con acceso para fichar; staff_key = su nombre en el horario.
+alter table profiles add column if not exists staff_key text;
+alter table profiles drop constraint if exists profiles_role_check;
+alter table profiles add constraint profiles_role_check check (role in ('socio','admin','staff'));
+
+-- Registro de jornada (fichajes). No se borra nunca: las correcciones se añaden como fichaje manual con motivo.
+-- La ubicación se guarda solo en el momento de fichar.
+create table if not exists clock_events (
+  id bigserial primary key,
+  center_id text not null references centers(id),
+  profile_id uuid references profiles(id) on delete set null,
+  kind text not null check (kind in ('in','pause','resume','out')),
+  at timestamptz not null default now(),
+  lat double precision, lng double precision, acc real,
+  manual boolean not null default false,
+  note text,
+  created_by uuid references profiles(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+create index if not exists clock_events_by_person on clock_events (profile_id, at);
+
 -- Contador de cambios por centro: la app pregunta solo este número y descarga todo únicamente cuando cambia.
 create table if not exists center_rev (
   center_id text primary key references centers(id) on delete cascade,
@@ -103,7 +124,7 @@ create table if not exists center_rev (
 );
 
 do $$ declare t text; begin
-  foreach t in array array['centers','profiles','classes','bookings','notifs','messages','payments','access_logs','center_rev'] loop
+  foreach t in array array['centers','profiles','classes','bookings','notifs','messages','payments','access_logs','center_rev','clock_events'] loop
     execute format('alter table %I enable row level security', t);
     execute format('revoke all on %I from anon, authenticated', t);
   end loop;
@@ -127,7 +148,7 @@ begin
   return null;
 end $$;
 do $$ declare t text; begin
-  foreach t in array array['centers','profiles','classes','bookings','notifs','messages','payments','access_logs'] loop
+  foreach t in array array['centers','profiles','classes','bookings','notifs','messages','payments','access_logs','clock_events'] loop
     execute format('drop trigger if exists bump_rev on %I', t);
     execute format('create trigger bump_rev after insert or update or delete on %I for each row execute function bump_rev()', t);
   end loop;
@@ -185,7 +206,9 @@ language plpgsql security definer set search_path = public as $$
 declare cid text := coalesce(new.raw_user_meta_data->>'center', 'alento'); pid uuid; trial int;
 begin
   if not exists (select 1 from centers where id = cid) then return new; end if;
-  update profiles set auth_id = new.id
+  update profiles set auth_id = new.id,
+    ficha = case when coalesce(ficha->>'nombre', '') = '' then ficha || jsonb_build_object(
+      'nombre', coalesce(new.raw_user_meta_data->>'nombre', ''), 'apellidos', coalesce(new.raw_user_meta_data->>'apellidos', '')) else ficha end
    where center_id = cid and lower(email) = lower(new.email) and auth_id is null
   returning id into pid;
   if pid is null then
@@ -226,7 +249,12 @@ begin
   adm := p.role = 'admin';
   return jsonb_build_object(
     'rev', (select coalesce((select r.rev from center_rev r where r.center_id = c.id), 0)),
-    'profile', jsonb_build_object('id', p.id, 'role', p.role, 'email', p.email, 'credits', p.credits, 'wallet', p.wallet, 'subs', p.subs, 'ficha', lite_ficha(p.ficha)),
+    'staff', case when adm then (select coalesce(jsonb_object_agg(x.id, jsonb_build_object('email', x.email, 'key', x.staff_key, 'role', x.role, 'cuenta', x.auth_id is not null,
+                 'name', trim(coalesce(x.ficha->>'nombre', '') || ' ' || coalesce(x.ficha->>'apellidos', '')))), '{}'::jsonb)
+                 from profiles x where x.center_id = c.id and (x.role = 'staff' or x.staff_key is not null)) end,
+    'clock', (select coalesce(jsonb_agg(jsonb_build_object('id', e.id, 'uid', e.profile_id, 'kind', e.kind, 'at', ms(e.at), 'manual', e.manual) order by e.at, e.id), '[]'::jsonb)
+              from clock_events e where e.profile_id = p.id and e.at > now() - interval '36 hours'),
+    'profile', jsonb_build_object('id', p.id, 'role', p.role, 'staff_key', p.staff_key, 'email', p.email, 'credits', p.credits, 'wallet', p.wallet, 'subs', p.subs, 'ficha', lite_ficha(p.ficha)),
     'center', jsonb_build_object('id', c.id, 'name', c.name, 'week', c.week, 'test_payments', c.test_payments,
       'cfg', case when adm then c.cfg else (c.cfg - 'codes') || jsonb_build_object('has_codes', jsonb_typeof(c.cfg->'codes') = 'array' and jsonb_array_length(c.cfg->'codes') > 0) end),
     'sold', (select coalesce(jsonb_object_agg(s.plan_id, s.n), '{}'::jsonb) from (
@@ -554,6 +582,75 @@ begin
           from profiles x where x.id = any(p_ids) and x.center_id = p.center_id and (p.role = 'admin' or x.id = p.id));
 end $$;
 
+-- ---------- fichajes ----------
+create or replace function clock(p_kind text, p_lat double precision, p_lng double precision, p_acc real) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare p profiles; last text; e clock_events;
+begin
+  p := me_profile();
+  if p.id is null then raise exception 'NO_SESSION'; end if;
+  if p.role not in ('staff', 'admin') then raise exception 'FORBIDDEN'; end if;
+  perform pg_advisory_xact_lock(hashtext(p.id::text));
+  select k.kind into last from clock_events k where k.profile_id = p.id and k.at > now() - interval '20 hours' order by k.at desc, k.id desc limit 1;
+  last := coalesce(last, 'out');
+  if not ((p_kind = 'in' and last = 'out') or (p_kind = 'pause' and last in ('in','resume')) or (p_kind = 'resume' and last = 'pause')
+          or (p_kind = 'out' and last in ('in','resume','pause'))) then raise exception 'CLOCK_STATE'; end if;
+  insert into clock_events (center_id, profile_id, kind, lat, lng, acc, created_by)
+  values (p.center_id, p.id, p_kind, p_lat, p_lng, p_acc, p.id) returning * into e;
+  return jsonb_build_object('id', e.id, 'at', ms(e.at));
+end $$;
+
+-- Fichajes de un mes ('2026-11'): cada monitor los suyos; recepción, los de todo el equipo (o de una persona).
+create or replace function clock_month(p_month text, p_uid uuid default null) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare p profiles; d0 timestamptz; d1 timestamptz;
+begin
+  p := me_profile();
+  if p.id is null then raise exception 'NO_SESSION'; end if;
+  d0 := (p_month || '-01')::date::timestamp at time zone 'Europe/Madrid';
+  d1 := ((p_month || '-01')::date + interval '1 month')::timestamp at time zone 'Europe/Madrid';
+  return (select coalesce(jsonb_agg(jsonb_build_object('id', e.id, 'uid', e.profile_id, 'kind', e.kind, 'at', ms(e.at), 'lat', e.lat, 'lng', e.lng, 'acc', e.acc,
+            'manual', e.manual, 'note', e.note) order by e.at, e.id), '[]'::jsonb)
+          from clock_events e where e.center_id = p.center_id and e.at >= d0 and e.at < d1
+            and (case when p.role = 'admin' then (p_uid is null or e.profile_id = p_uid) else e.profile_id = p.id end));
+end $$;
+
+-- Recepción añade un fichaje olvidado (queda marcado como manual, con motivo y quién lo hizo).
+create or replace function admin_clock_add(p_uid uuid, p_kind text, p_at timestamptz, p_note text) returns void
+language plpgsql security definer set search_path = public as $$
+declare a profiles;
+begin
+  a := require_admin();
+  if p_kind not in ('in','pause','resume','out') then raise exception 'NOT_FOUND'; end if;
+  if nullif(trim(coalesce(p_note, '')), '') is null then raise exception 'NOTE_REQUIRED'; end if;
+  if p_at > now() + interval '5 minutes' then raise exception 'FUTURE'; end if;
+  if not exists (select 1 from profiles where id = p_uid and center_id = a.center_id and (role in ('staff','admin'))) then raise exception 'NOT_FOUND'; end if;
+  insert into clock_events (center_id, profile_id, kind, at, manual, note, created_by) values (a.center_id, p_uid, p_kind, p_at, true, left(p_note, 500), a.id);
+end $$;
+
+-- Recepción da (o quita, con p_key vacío) acceso para fichar a un email. Si esa persona aún no tiene cuenta, la crea al registrarse.
+create or replace function admin_set_staff(p_email text, p_key text) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare a profiles; e text := lower(trim(coalesce(p_email, ''))); pid uuid; r text;
+begin
+  a := require_admin();
+  if nullif(p_key, '') is null then
+    update profiles set role = case when role = 'staff' then 'socio' else role end, staff_key = null where center_id = a.center_id and lower(email) = e;
+    return null;
+  end if;
+  if e !~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$' then raise exception 'BAD_EMAIL'; end if;
+  update profiles set staff_key = null, role = case when role = 'staff' then 'socio' else role end
+   where center_id = a.center_id and staff_key = p_key and lower(email) <> e;
+  select id, role into pid, r from profiles where center_id = a.center_id and lower(email) = e;
+  if pid is null then
+    insert into profiles (center_id, email, role, staff_key, ficha) values (a.center_id, e, 'staff', p_key, jsonb_build_object('email', e, 'alta', ms(now()), 'origen', 'Equipo'))
+    returning id into pid;
+  else
+    update profiles set staff_key = p_key, role = case when r = 'admin' then 'admin' else 'staff' end where id = pid;
+  end if;
+  return pid;
+end $$;
+
 -- Solo las funciones públicas de la app se pueden llamar desde fuera.
 do $$ declare f text; begin
   foreach f in array array['me_profile()','ensure_classes(text)','notify_user(text,uuid,text)','promote(uuid)','require_admin()','handle_new_user()',
@@ -561,7 +658,8 @@ do $$ declare f text; begin
     execute format('revoke execute on function %s from public, anon, authenticated', f);
   end loop;
   foreach f in array array['hydrate()','book_class(uuid)','cancel_booking(uuid)','buy_plan(text,text,text)','check_code(text)','my_rev()','client_media(uuid[])','push(jsonb)',
-                           'admin_create_client(jsonb)','admin_add_credits(uuid,int,numeric,text,text)','admin_baja(uuid)','save_config(text,jsonb,jsonb)'] loop
+                           'admin_create_client(jsonb)','admin_add_credits(uuid,int,numeric,text,text)','admin_baja(uuid)','save_config(text,jsonb,jsonb)',
+                           'clock(text,double precision,double precision,real)','clock_month(text,uuid)','admin_clock_add(uuid,text,timestamptz,text)','admin_set_staff(text,text)'] loop
     execute format('revoke execute on function %s from public, anon', f);
     execute format('grant execute on function %s to authenticated', f);
   end loop;

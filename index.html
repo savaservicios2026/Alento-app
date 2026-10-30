@@ -161,6 +161,9 @@ main{padding-block:24px 64px}
 .plan .was{font-size:15px;color:var(--ink-2);font-weight:400}.plan .left{color:var(--accent);font-weight:500}
 .promo{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 16px}.promo input{flex:1 1 200px;min-width:0;max-width:320px;text-transform:uppercase}
 .alert.opening{margin:0 0 14px}
+.clock-panel h2{margin:4px 0 0}.clock-panel .actions .btn{min-width:150px}
+.clock-tools{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px}.clock-tools .field{margin:0;min-width:0;flex:0 1 220px}
+.clock-totals{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}.clock-table a{font-size:12px;color:var(--ink-2)}
 .aj-sec{margin-top:26px;padding-top:18px;border-top:1px solid var(--line)}.aj-sec > p.muted{font-size:13px;margin:4px 0 0}
 .aj-card{border:1px solid var(--line);border-radius:12px;padding:4px 14px 14px;margin-top:12px;background:var(--bg)}
 .aj-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:0 12px}.aj-grid .wide{grid-column:1/-1}
@@ -454,6 +457,7 @@ textarea,select{font:inherit;color:inherit;border:1px solid var(--line);backgrou
       <button class="tab" role="tab" data-tab="acceso">Acceso</button>
       <button class="tab" role="tab" data-tab="mensajes">Mensajes <span class="tab-badge num" id="msgBadge" hidden></span></button>
       <button class="tab" role="tab" data-tab="perfil">Mi ficha</button>
+      <button class="tab" role="tab" data-tab="fichajes">Fichajes</button>
       <button class="tab" role="tab" data-tab="ajustes">Ajustes</button>
     </nav>
   </div>
@@ -476,6 +480,7 @@ textarea,select{font:inherit;color:inherit;border:1px solid var(--line);backgrou
   <button class="bn" data-tab="clientes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"/><path d="M16 4.8a3.2 3.2 0 0 1 0 6.4M18 14.8c1.8.7 3 2.5 3.5 5.2"/></svg><span>Clientes</span></button>
   <button class="bn" data-tab="acceso"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><rect x="8" y="8" width="8" height="8" rx="1"/></svg><span>Acceso</span></button>
   <button class="bn" data-tab="mensajes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-9l-5 4v-4H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/></svg><span>Mensajes</span><i class="bn-badge num" id="msgBadge2" hidden></i></button>
+  <button class="bn" data-tab="fichajes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9.5 2.5h5"/></svg><span>Fichajes</span></button>
   <button class="bn" data-tab="ajustes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/></svg><span>Ajustes</span></button>
 </nav>
 
@@ -3025,7 +3030,8 @@ const appUrl = () => location.origin + location.pathname;
 const ERRS = {
   NO_CREDITS:'No te quedan clases en el bono.', FULL:'Completo y con la lista de espera llena.', STARTED:'Esta clase ya ha empezado.',
   ALREADY:'Ya estás apuntada a esta clase.', FORBIDDEN:'No tienes permiso para hacer esto.', NO_SESSION:'Tu sesión ha caducado. Vuelve a entrar.',
-  PAYMENTS_OFF:'Los pagos desde la app todavía no están activos. Paga en recepción.', NOT_FOUND:'No se ha encontrado. Recarga la app.',
+  CLOCK_STATE:'Ese fichaje no encaja con el anterior. Recarga la app.', NOTE_REQUIRED:'Escribe el motivo.', FUTURE:'La hora no puede ser futura.',
+  BAD_EMAIL:'Revisa el email.', PAYMENTS_OFF:'Los pagos desde la app todavía no están activos. Paga en recepción.', NOT_FOUND:'No se ha encontrado. Recarga la app.',
   BAD_CODE:'Ese código no existe o ya ha caducado.', SOLD_OUT:'Este bono se ha agotado.', PLAN_ENDED:'Este bono ya no está a la venta.'
 };
 const errText = e => { const m = (e && e.message) || ''; const k = Object.keys(ERRS).find(x => m.includes(x)); return k ? ERRS[k] : 'No se ha podido conectar con el servidor. Revisa la conexión e inténtalo de nuevo.'; };
@@ -3113,6 +3119,7 @@ function applyHydrate(h){
   });
   S.msgs = (h.messages || []).map(m => ({ id:'d' + m.id, _db:m.id, _r:m.read, thread:m.thread, from:m.from_center ? 'centro' : m.thread, text:m.text, ts:m.ts, read:m.read, kind:m.kind, cat:m.cat }));
   S.notifs = (h.notifs || []).map(n => ({ _db:n.id, _r:n.read, uid:S.user, text:n.text, ts:n.ts, read:n.read }));
+  L.role = p.role; L.staffKey = p.staff_key || ''; L.staff = h.staff || {}; S.clock = h.clock || [];
   S.payments = (h.payments || []).map(y => ({ _db:y.id, uid:y.uid, concept:y.concept, amount:+y.amount, method:y.method, ts:y.ts }));
   S.accessLog = (h.access || []).map(a => ({ _db:a.id, uid:a.uid, ok:a.ok, title:a.title, manual:a.manual, ts:a.ts }));
   syncNames(S.clients);
@@ -3229,6 +3236,7 @@ async function liveRegister(r, root, onDone){
 }
 function bindLiveLogin(root, lf){
   const err = root.querySelector('#l_err'), email = () => root.querySelector('#l_email').value.trim();
+  root.querySelector('#l_staff').onclick = staffSignupModal;
   root.querySelector('#l_forgot').onclick = async () => {
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email())) return err.textContent = 'Escribe tu email arriba y vuelve a pulsar aquí.';
     const { error } = await sb.auth.resetPasswordForEmail(email(), { redirectTo:appUrl() });
@@ -3240,8 +3248,36 @@ function bindLiveLogin(root, lf){
     const { error } = await sb.auth.signInWithPassword({ email:email(), password:root.querySelector('#l_pass').value });
     if (error){ btn.disabled = false; btn.textContent = 'Entrar'; err.textContent = authErr(error); return; }
     S.tab = 'horario'; L.loading = true; render(); await refresh();
-    if (!isGuest()) toast(isAdmin() ? 'Has entrado como recepción.' : `Hola, ${S.clients[me()].nombre}.`);
+    if (isStaff()){ S.tab = 'fichajes'; render(); }
+    if (!isGuest()) toast(isAdmin() ? 'Has entrado como recepción.' : `Hola, ${(S.clients[me()] || {}).nombre || ''}.`);
   };
+}
+// Alta del equipo: la cuenta se crea aquí y queda como monitor si recepción ya dio acceso a ese email (Ajustes → Equipo).
+function staffSignupModal(){
+  modal(`<h2>Acceso del equipo</h2><p class="muted">Usa el email con el que recepción te ha dado acceso.</p>
+    <div class="grid2"><label class="field">Nombre<input id="s_n" autocomplete="given-name"></label><label class="field">Apellidos<input id="s_a" autocomplete="family-name"></label></div>
+    <label class="field">Email<input id="s_e" type="email" autocomplete="email"></label>
+    <label class="field">Contraseña (mínimo 8 caracteres)<input id="s_p" type="password" autocomplete="new-password"></label>
+    <div class="err" id="s_err" role="alert"></div>
+    <div class="actions"><button class="btn ghost" data-close>Cancelar</button><button class="btn" id="s_ok">Crear acceso</button></div>`, m => {
+    const v = id => m.querySelector(id).value.trim(), err = m.querySelector('#s_err');
+    m.querySelector('#s_ok').onclick = async () => {
+      if (!v('#s_n')) return err.textContent = 'Escribe tu nombre.';
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v('#s_e'))) return err.textContent = 'Revisa el email.';
+      if (m.querySelector('#s_p').value.length < 8) return err.textContent = 'La contraseña debe tener al menos 8 caracteres.';
+      const btn = m.querySelector('#s_ok'); btn.disabled = true; btn.textContent = 'Creando…';
+      const { data, error } = await sb.auth.signUp({ email:v('#s_e'), password:m.querySelector('#s_p').value,
+        options:{ data:{ center:SUPA.center, nombre:v('#s_n'), apellidos:v('#s_a') }, emailRedirectTo:appUrl() } });
+      const fail = t => { btn.disabled = false; btn.textContent = 'Crear acceso'; err.textContent = t; };
+      if (error) return fail(authErr(error));
+      if (data.user && Array.isArray(data.user.identities) && !data.user.identities.length) return fail('Ya hay una cuenta con ese email. Entra con ella desde «Entrar».');
+      closeLayer();
+      if (!data.session) return modal(`<h2>Confirma tu email</h2><p class="muted">Te hemos enviado un correo a <b>${esc(v('#s_e'))}</b>. Pulsa el enlace y después entra con tu email y tu contraseña.</p><div class="actions"><button class="btn" data-close>Entendido</button></div>`);
+      L.loading = true; render(); await refresh();
+      if (isStaff()){ S.tab = 'fichajes'; render(); toast('Acceso creado. Ya puedes fichar.'); }
+      else toast('Cuenta creada, pero recepción todavía no ha dado acceso al equipo a este email. Pídeselo y vuelve a entrar.');
+    };
+  });
 }
 function bindLogout(root){
   const b = root.querySelector('#logout');
@@ -3339,6 +3375,7 @@ const save = () => {
 const me = () => S.user;
 const isAdmin = () => S.user === ADMIN;
 const isGuest = () => S.user === GUEST;
+const isStaff = () => LIVE && L.role === 'staff';
 const notify = (uid, text) => S.notifs.unshift({ uid, ts:Date.now(), text, read:false });
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 const unreadMsgs = uid => S.msgs.filter(m => !m.read && (uid === ADMIN ? m.from !== 'centro' : (m.thread === uid && m.from === 'centro'))).length;
@@ -3454,7 +3491,9 @@ $('#resetBtn').onclick = () => modal(`<h2>¿Restablecer la demo?</h2><p class="m
   <div class="actions"><button class="btn ghost" data-close>Cancelar</button><button class="btn accent" id="doReset">Restablecer</button></div>`,
   m => m.querySelector('#doReset').onclick = () => { try{ localStorage.removeItem(KEY); }catch(e){} S = seed(defaultCfg(S.cfg.sector, S.cfg.name)); syncNames(S.clients); closeLayer(); render(); toast('Datos de ejemplo restablecidos.'); });
 
-const ADMIN_TABS = ['clientes','horario','acceso','mensajes','ajustes'];
+const ADMIN_TABS = ['clientes','horario','acceso','mensajes','fichajes','ajustes'];
+const STAFF_TABS = ['fichajes','horario'];
+const tabsFor = () => isAdmin() ? ADMIN_TABS : isStaff() ? STAFF_TABS : SOCIO_TABS;
 const SOCIO_TABS = ['horario','reservas','pagos','tienda','mensajes','perfil'];
 function renderHeader(){
   if (!NAMES[S.user]) S.user = GUEST;
@@ -3462,18 +3501,18 @@ function renderHeader(){
   $('#brandLogo').toggleAttribute('hidden', own); $('#brandName').hidden = !own; $('#brandName').textContent = S.cfg.name;
   fillWho();
   const n = S.credits[me()] || 0;
-  $('#creditPill').hidden = isAdmin() || isGuest();
+  $('#creditPill').hidden = isAdmin() || isGuest() || isStaff();
   $('#bellBtn').hidden = isGuest();
   document.querySelector('nav.tabs').hidden = isGuest();
   $('#creditPill').innerHTML = `<span>${n}</span> <span class="credit-label">${U(n)} en tu bono</span>`;
   const un = S.notifs.filter(x => x.uid === me() && !x.read).length;
   const b = $('#bellBadge'); b.hidden = !un; b.textContent = un;
   whoSel.value = me();
-  document.querySelectorAll('.tab, .bn').forEach(t => { t.setAttribute(t.classList.contains('tab') ? 'aria-selected' : 'aria-current', t.dataset.tab === S.tab); t.hidden = !(isAdmin() ? ADMIN_TABS : SOCIO_TABS).includes(t.dataset.tab); });
+  document.querySelectorAll('.tab, .bn').forEach(t => { t.setAttribute(t.classList.contains('tab') ? 'aria-selected' : 'aria-current', t.dataset.tab === S.tab); t.hidden = !tabsFor().includes(t.dataset.tab); });
   document.querySelector('.bottom-nav').hidden = isGuest();
   const um = unreadMsgs(me());
   ['#msgBadge','#msgBadge2'].forEach(id => { const mb = $(id); mb.hidden = !um; mb.textContent = um; });
-  const mbtn = $('#meBtn'); mbtn.hidden = isAdmin() || isGuest(); $('#qrBtn').hidden = mbtn.hidden;
+  const mbtn = $('#meBtn'); mbtn.hidden = isAdmin() || isGuest() || isStaff(); $('#qrBtn').hidden = mbtn.hidden;
   if (!mbtn.hidden){ const c = S.clients[me()]; if (c && c.foto && c.foto[0] !== "@") mbtn.innerHTML = `<img src="${c.foto}" alt="">`; else mbtn.textContent = c ? initials(c) : ''; mbtn.setAttribute('aria-pressed', S.tab === 'perfil'); }
 }
 
@@ -4091,7 +4130,7 @@ function viewEntrar(){
         <label class="field">Contraseña<input id="l_pass" type="password" autocomplete="current-password" value="${LIVE ? '' : 'demo1234'}"></label>
         <div class="err" id="l_err" role="alert"></div>
         <div class="actions" style="justify-content:space-between;align-items:center"><button type="button" class="linkbtn" id="l_forgot">He olvidado mi contraseña</button><button class="btn" type="submit">Entrar</button></div>
-        ${LIVE ? '' : '<p class="muted" style="font-size:12px;margin:14px 0 0">Demo: entra con el email de cualquier socio de ejemplo y cualquier contraseña.</p>'}
+        ${LIVE ? '<p class="muted" style="font-size:13px;margin:16px 0 0">¿Eres del equipo? <button type="button" class="linkbtn" id="l_staff" style="font-size:13px">Crea tu acceso para fichar</button></p>' : '<p class="muted" style="font-size:12px;margin:14px 0 0">Demo: entra con el email de cualquier socio de ejemplo y cualquier contraseña.</p>'}
       </form>` : registroHTML()}
     </div></div>`;
 }
@@ -4355,7 +4394,10 @@ function viewAjustes(){
     <section class="aj-sec"><h2>Equipo</h2>
       <p class="muted">Añade a cada ${sec.staffLabel.toLowerCase()} y sus ${SEC.units} de la semana. Al guardar aparecen en el horario de cada día.</p>
       ${Object.entries(keys).map(([k, v], si) => { const mine = DOW.flatMap(([n]) => (d.week[n] || []).map((r, i) => ({ n, i, r })).filter(x => x.r[2] === k).sort((a, b) => a.r[0].localeCompare(b.r[0])));
+        const acc = staffAccess(k);
         return `<div class="aj-card"><div class="aj-row"><b>${esc(v.name)}</b><span class="muted" style="font-size:12.5px;margin-right:auto">${mine.length ? `${mine.length} ${U(mine.length)} a la semana` : `Sin ${SEC.units} todavía`}</span><button type="button" class="linkbtn" data-act="del-staff" data-i="${si}">Quitar</button></div>
+        ${acc ? `<p class="muted" style="font-size:12.5px;margin:6px 0 0">Ficha con <b>${esc(acc.email)}</b> · ${acc.cuenta ? 'acceso creado' : 'falta que cree su acceso en la app'} <button type="button" class="linkbtn" data-act="staff-off" data-k="${k}">Quitar acceso</button></p>`
+          : `<div class="aj-row" style="justify-content:flex-start"><label class="field" style="margin:0;flex:1 1 200px;max-width:300px;min-width:0"><input type="email" data-staffmail="${k}" placeholder="Email para fichar" aria-label="Email de ${esc(v.name)} para fichar"></label><button type="button" class="btn ghost sm" data-act="staff-on" data-k="${k}">Dar acceso</button></div>`}
         ${mine.map(({ n, i, r }) => `<div class="aj-class">
           <label class="field">Día<select data-move="${n}.${i}">${DOW.map(([dn,, name]) => `<option value="${dn}" ${dn === n ? 'selected' : ''}>${cap1(name)}</option>`).join('')}</select></label>
           ${fld('Hora', `week.${n}.${i}.0`, r[0], 'type="time"')}
@@ -4421,6 +4463,7 @@ function afterAjustes(root){
         if (used) return toast(`${d.staff[i]} tiene ${SEC.units} en el horario. Cámbialas antes de quitarle.`);
         d.staff.splice(i, 1); break;
       }
+      case 'staff-on': case 'staff-off': return setStaffAccess(b.dataset.k, b.dataset.act === 'staff-on' ? (root.querySelector(`[data-staffmail="${b.dataset.k}"]`).value || '').trim() : '', d);
       case 'day': ajDay = i; break;
       case 'add-class': { const list = d.week[ajDay] || (d.week[ajDay] = []), last = list[list.length - 1];
         list.push(last ? [last[0], last[1], last[2], last[3], last[4]] : ['18:00', Object.keys(TYPES)[0], Object.keys(keys)[0] || '', 'Todos', d.cap]); break; }
@@ -4483,6 +4526,142 @@ function afterAjustes(root){
   };
 }
 const sec = d => SECTORS[d.sector] || SECTORS.pilates;
+
+// ---------- fichajes (registro de jornada) ----------
+// Cada fichaje guarda la hora del servidor y, si la persona da permiso, la ubicación en ese momento. No hay seguimiento continuo.
+const CLOCK_TXT = { in:'Entrada', pause:'Pausa', resume:'Vuelta de la pausa', out:'Salida' };
+const hm = t => new Date(t).toLocaleTimeString('es-ES', { hour:'2-digit', minute:'2-digit' });
+const dur = ms => `${Math.floor(ms / 36e5)} h ${pad(Math.floor(ms % 36e5 / 6e4))} min`;
+const selfId = () => LIVE ? L.pid : (isAdmin() ? ADMIN : me());
+let CLK = { month:ymd(new Date()).slice(0, 7), uid:'', data:null, key:'' };
+function staffAccess(k){
+  if (LIVE) { const e = Object.entries(L.staff || {}).find(([, x]) => x.key === k); return e ? { id:e[0], ...e[1] } : null; }
+  const em = (S.staffAccess || {})[k]; return em ? { id:'st_' + k, email:em, cuenta:true, key:k } : null;
+}
+function setStaffAccess(k, email, d){
+  if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return toast('Escribe un email válido.');
+  const name = (staff(d.staff)[k] || {}).name || 'esta persona';
+  const msg = () => email ? `Acceso dado a ${name}. Dile que abra la app, pulse «Crea tu acceso para fichar» y use ${email}.` : 'Acceso quitado.';
+  if (LIVE){
+    const old = staffAccess(k);
+    return liveOp(() => rpc('admin_set_staff', { p_email:email || (old && old.email) || '', p_key:email ? k : '' }), msg);
+  }
+  S.staffAccess = S.staffAccess || {}; if (email) S.staffAccess[k] = email.toLowerCase(); else delete S.staffAccess[k];
+  save(); render(); toast(msg());
+}
+function clkName(uid){
+  if (uid === selfId()) return isAdmin() ? 'Recepción (tú)' : 'Tú';
+  if (LIVE){ const x = (L.staff || {})[uid]; return x ? ((INSTR[x.key] && INSTR[x.key].name) || x.name || x.email) : 'Recepción'; }
+  return (uid || '').startsWith('st_') ? ((INSTR[uid.slice(3)] || {}).name || uid.slice(3)) : NAMES[uid] || uid;
+}
+// Agrupa los fichajes en jornadas (de una entrada a su salida) con el tiempo trabajado y las pausas.
+function workdays(events){
+  const out = [], open = {};
+  [...events].sort((a, b) => a.at - b.at).forEach(e => {
+    let w = open[e.uid];
+    if (e.kind === 'in' || !w){
+      if (w) out.push(w);
+      w = open[e.uid] = { uid:e.uid, day:ymd(new Date(e.at)), start:e.kind === 'in' ? e : null, end:null, events:[], worked:0, paused:0, since:e.at, state:e.kind === 'pause' ? 'pause' : 'work' };
+      if (e.kind !== 'in' && e.kind !== 'resume'){ w.since = e.at; }
+    } else {
+      if (w.state === 'work') w.worked += e.at - w.since; else w.paused += e.at - w.since;
+      w.since = e.at; w.state = e.kind === 'pause' ? 'pause' : 'work';
+    }
+    w.events.push(e);
+    if (e.kind === 'out'){ w.end = e; delete open[e.uid]; out.push(w); }
+  });
+  Object.values(open).forEach(w => { w.live = true; if (w.state === 'work') w.worked += Date.now() - w.since; else w.paused += Date.now() - w.since; out.push(w); });
+  return out.sort((a, b) => (b.start || b.events[0]).at - (a.start || a.events[0]).at);
+}
+const getPos = () => new Promise(res => {
+  if (!navigator.geolocation) return res(null);
+  navigator.geolocation.getCurrentPosition(p => res({ lat:+p.coords.latitude.toFixed(6), lng:+p.coords.longitude.toFixed(6), acc:Math.round(p.coords.accuracy) }), () => res(null), { enableHighAccuracy:true, timeout:8000, maximumAge:60000 });
+});
+const mapLink = e => e && e.lat != null ? `<a href="https://www.google.com/maps?q=${e.lat},${e.lng}" target="_blank" rel="noopener">mapa</a>` : '';
+function monthEvents(){
+  if (!LIVE) return (S.clock || []).filter(e => ymd(new Date(e.at)).slice(0, 7) === CLK.month && (isAdmin() ? (!CLK.uid || e.uid === CLK.uid) : e.uid === selfId()));
+  return CLK.data || [];
+}
+function viewFichajes(){
+  const own = (S.clock || []).filter(e => e.uid === selfId()).sort((a, b) => a.at - b.at);
+  const recent = own.filter(e => Date.now() - e.at < 20 * 36e5), last = recent[recent.length - 1], st = last ? last.kind : 'out';
+  const today = workdays(own).filter(w => w.day === ymd(new Date()) || w.live), worked = today.reduce((a, w) => a + w.worked, 0);
+  const cur = today.find(w => w.live);
+  const btns = st === 'out' ? `<button class="btn accent" data-clock="in">Fichar entrada</button>`
+    : st === 'pause' ? `<button class="btn accent" data-clock="resume">Volver de la pausa</button><button class="btn ghost" data-clock="out">Fichar salida</button>`
+    : `<button class="btn" data-clock="pause">Pausa</button><button class="btn accent" data-clock="out">Fichar salida</button>`;
+  const days = workdays(monthEvents()), adm = isAdmin();
+  const people = adm ? (LIVE ? Object.entries(L.staff || {}).map(([id]) => id).concat(L.pid) : Object.keys(S.staffAccess || {}).map(k => 'st_' + k).concat(ADMIN)) : [];
+  const totals = {}; days.forEach(w => totals[w.uid] = (totals[w.uid] || 0) + w.worked);
+  return `<div class="view-head"><div><h1>Fichajes</h1><p class="muted">${adm ? 'Registro de jornada del equipo.' : 'Tu registro de jornada.'}</p></div></div>
+  <section class="panel clock-panel">
+    <div class="desc muted">Tu jornada de hoy</div>
+    <h2>${st === 'out' ? 'Fuera de turno' : st === 'pause' ? `En pausa desde las ${hm(last.at)}` : `Trabajando desde las ${hm((cur && cur.start ? cur.start : last).at)}`}</h2>
+    <p class="muted" style="margin:2px 0 0">Hoy: ${dur(worked)} trabajadas${recent.length ? ` · último fichaje: ${CLOCK_TXT[last.kind].toLowerCase()} a las ${hm(last.at)}` : ''}</p>
+    <div class="actions" style="justify-content:flex-start">${btns}</div>
+    <p class="muted" style="font-size:12px;margin:10px 0 0">Al fichar se guarda la hora del servidor y tu ubicación en ese momento, si das permiso. No se sigue tu ubicación durante el día.</p>
+  </section>
+  <h2 class="section-t desc">${adm ? 'Registro del equipo' : 'Tus jornadas'}</h2>
+  <div class="clock-tools">
+    <label class="field">Mes<input type="month" id="ck_month" value="${CLK.month}" max="${ymd(new Date()).slice(0, 7)}"></label>
+    ${adm ? `<label class="field">Persona<select id="ck_uid"><option value="">Todo el equipo</option>${people.map(u => `<option value="${u}" ${u === CLK.uid ? 'selected' : ''}>${esc(clkName(u))}</option>`).join('')}</select></label>` : ''}
+    <div class="actions" style="margin:0;align-self:flex-end"><button class="btn ghost sm" id="ck_csv">Descargar Excel</button>${adm ? '<button class="btn ghost sm" id="ck_add">Añadir fichaje olvidado</button>' : ''}</div>
+  </div>
+  ${adm && Object.keys(totals).length > 1 ? `<div class="clock-totals">${Object.entries(totals).map(([u, ms]) => `<span class="chip">${esc(clkName(u))}: <b>${dur(ms)}</b></span>`).join('')}</div>` : ''}
+  ${LIVE && !CLK.data ? `<div class="empty">${ISO()}<p>Cargando…</p></div>` : days.length ? `<div class="table-wrap"><table class="clock-table"><thead><tr><th>Día</th>${adm ? '<th>Persona</th>' : ''}<th>Entrada</th><th>Salida</th><th>Pausas</th><th class="r">Trabajado</th></tr></thead><tbody>
+    ${days.map(w => `<tr><td class="num">${fmtDay(w.day, { weekday:'short', day:'numeric', month:'short' })}</td>${adm ? `<td>${esc(clkName(w.uid))}</td>` : ''}
+      <td class="num">${w.start ? hm(w.start.at) : '—'} ${mapLink(w.start)}</td>
+      <td class="num">${w.end ? hm(w.end.at) : w.live ? '<span class="status ok">en curso</span>' : '<span class="status wait">sin salida</span>'} ${mapLink(w.end)}</td>
+      <td class="num">${w.paused ? dur(w.paused) : '—'}</td><td class="r num"><b>${dur(w.worked)}</b>${w.events.some(e => e.manual) ? ` <span class="muted" title="${esc(w.events.filter(e => e.manual).map(e => `${CLOCK_TXT[e.kind]}: ${e.note || ''}`).join(' · '))}">(corregido)</span>` : ''}</td></tr>`).join('')}
+  </tbody></table></div>` : `<div class="empty">${ISO()}<p>No hay fichajes este mes.</p></div>`}
+  ${isStaff() ? '<button class="btn ghost logout" id="logout" style="margin-top:18px">Cerrar sesión</button>' : ''}`;
+}
+function afterFichajes(root){
+  if (LIVE){
+    const key = [CLK.month, CLK.uid, L.rev].join('|');
+    if (CLK.key !== key){ CLK.key = key; rpc('clock_month', { p_month:CLK.month, p_uid:CLK.uid || null }).then(r => { CLK.data = r || []; if (S.tab === 'fichajes' && !isTyping()) render(); }).catch(e => toast(errText(e))); }
+  }
+  root.querySelectorAll('[data-clock]').forEach(b => b.onclick = async () => {
+    const kind = b.dataset.clock; root.querySelectorAll('[data-clock]').forEach(x => x.disabled = true); b.textContent = 'Fichando…';
+    const pos = await getPos(), said = `${CLOCK_TXT[kind]} registrada a las ${hm(Date.now())}${pos ? '' : ' (sin ubicación)'}.`;
+    if (LIVE) return liveOp(() => rpc('clock', { p_kind:kind, p_lat:pos ? pos.lat : null, p_lng:pos ? pos.lng : null, p_acc:pos ? pos.acc : null }), () => { CLK.key = ''; return said; });
+    (S.clock = S.clock || []).push({ id:'k' + Date.now(), uid:selfId(), kind, at:Date.now(), ...(pos || {}) }); save(); render(); toast(said);
+  });
+  const mo = root.querySelector('#ck_month'); mo.onchange = () => { if (!mo.value) return; CLK.month = mo.value; CLK.data = null; render(); };
+  const us = root.querySelector('#ck_uid'); if (us) us.onchange = () => { CLK.uid = us.value; CLK.data = null; render(); };
+  root.querySelector('#ck_csv').onclick = () => {
+    const ev = monthEvents().slice().sort((a, b) => a.at - b.at);
+    if (!ev.length) return toast('No hay fichajes este mes.');
+    const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const rows = [['Persona','Fecha','Hora','Tipo','Latitud','Longitud','Precisión (m)','Manual','Motivo']].concat(ev.map(e => [clkName(e.uid), new Date(e.at).toLocaleDateString('es-ES'), new Date(e.at).toLocaleTimeString('es-ES'), CLOCK_TXT[e.kind], e.lat ?? '', e.lng ?? '', e.acc ?? '', e.manual ? 'Sí' : '', e.note || '']));
+    const days = workdays(ev); rows.push([], ['Resumen'], ['Persona','Día','Entrada','Salida','Pausas','Trabajado']);
+    days.slice().reverse().forEach(w => rows.push([clkName(w.uid), w.day, w.start ? hm(w.start.at) : '', w.end ? hm(w.end.at) : '', dur(w.paused), dur(w.worked)]));
+    const blob = new Blob(['﻿' + rows.map(r => r.map(q).join(';')).join('\r\n')], { type:'text/csv;charset=utf-8' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `fichajes-${CLK.month}.csv`; document.body.appendChild(a); a.click(); a.remove();
+  };
+  const add = root.querySelector('#ck_add');
+  if (add) add.onclick = () => {
+    const people = LIVE ? Object.keys(L.staff || {}).concat(L.pid) : Object.keys(S.staffAccess || {}).map(k => 'st_' + k).concat(ADMIN);
+    const now = new Date(Date.now() - new Date().getTimezoneOffset() * 6e4).toISOString().slice(0, 16);
+    modal(`<h2>Añadir fichaje olvidado</h2><p class="muted">Queda marcado como corregido, con el motivo y la fecha en que se añadió.</p>
+      <label class="field">Persona<select id="ka_u">${people.map(u => `<option value="${u}">${esc(clkName(u))}</option>`).join('')}</select></label>
+      <div class="grid2"><label class="field">Tipo<select id="ka_k">${Object.entries(CLOCK_TXT).map(([k, t]) => `<option value="${k}">${t}</option>`).join('')}</select></label>
+      <label class="field">Fecha y hora<input id="ka_t" type="datetime-local" value="${now}" max="${now}"></label></div>
+      <label class="field">Motivo<input id="ka_n" placeholder="Olvidó fichar la salida"></label>
+      <div class="err" id="ka_err" role="alert"></div>
+      <div class="actions"><button class="btn ghost" data-close>Cancelar</button><button class="btn" id="ka_ok">Añadir</button></div>`, m => m.querySelector('#ka_ok').onclick = () => {
+      const u = m.querySelector('#ka_u').value, k = m.querySelector('#ka_k').value, t = new Date(m.querySelector('#ka_t').value), n = m.querySelector('#ka_n').value.trim(), err = m.querySelector('#ka_err');
+      if (!u) return err.textContent = 'Primero da acceso para fichar a alguien en Ajustes → Equipo.';
+      if (isNaN(t)) return err.textContent = 'Indica la fecha y la hora.';
+      if (t > new Date()) return err.textContent = ERRS.FUTURE;
+      if (!n) return err.textContent = ERRS.NOTE_REQUIRED;
+      closeLayer();
+      if (LIVE) return liveOp(() => rpc('admin_clock_add', { p_uid:u, p_kind:k, p_at:t.toISOString(), p_note:n }), () => { CLK.key = ''; return 'Fichaje añadido.'; });
+      (S.clock = S.clock || []).push({ id:'k' + Date.now(), uid:u, kind:k, at:+t, manual:true, note:n }); save(); render(); toast('Fichaje añadido.');
+    });
+  };
+  bindLogout(root);
+}
 
 // ---------- control de acceso con código QR ----------
 // El QR del socio cambia cada 30 s y lleva una firma, para que una captura de pantalla no sirva más tarde.
@@ -4611,13 +4790,13 @@ function afterAcceso(root){
   };
 }
 
-const VIEWS = { horario:[viewHorario,afterHorario], reservas:[viewReservas,afterReservas], pagos:[viewPagos,afterPagos], tienda:[viewTienda,afterTienda], mensajes:[viewMensajes,afterMensajes], clientes:[viewClientes,afterClientes], perfil:[viewPerfil,afterPerfil], entrar:[viewEntrar,afterEntrar], ajustes:[viewAjustes,afterAjustes], acceso:[viewAcceso,afterAcceso] };
+const VIEWS = { horario:[viewHorario,afterHorario], reservas:[viewReservas,afterReservas], pagos:[viewPagos,afterPagos], tienda:[viewTienda,afterTienda], mensajes:[viewMensajes,afterMensajes], clientes:[viewClientes,afterClientes], perfil:[viewPerfil,afterPerfil], entrar:[viewEntrar,afterEntrar], ajustes:[viewAjustes,afterAjustes], fichajes:[viewFichajes,afterFichajes], acceso:[viewAcceso,afterAcceso] };
 function render(){
   if (S.tab !== 'acceso') stopScan();
   if (LIVE && L.loading){ renderHeader(); $('#view').innerHTML = `<div class="empty" style="margin-top:12vh">${ISO()}<p>Cargando…</p></div>`; return; }
   renderHeader();
   if (isGuest()) S.tab = 'entrar';
-  else if (!(isAdmin() ? ADMIN_TABS : SOCIO_TABS).includes(S.tab)) S.tab = isAdmin() ? 'clientes' : 'horario';
+  else if (!tabsFor().includes(S.tab)) S.tab = isAdmin() ? 'clientes' : isStaff() ? 'fichajes' : 'horario';
   renderHeader();
   const root = $('#view'), [v, after] = VIEWS[S.tab];
   root.innerHTML = v();

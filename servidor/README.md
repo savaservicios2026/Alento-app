@@ -30,6 +30,8 @@ Cuando cambie `supabase.sql`, vuelve a pegarlo entero en el SQL Editor y pulsa R
 - Cada 20 s la app solo pregunta `my_rev()` (contador de cambios del centro, subido por triggers) y descarga `hydrate()` cuando cambia o cada 10 min. Foto y firma viajan como "@huella" y se piden una vez con `client_media()`.
 - En `cfg` se guardan también los Ajustes de Recepción: equipo (`staff`), bonos (`plans`, con `until` y `limit` para preventa), códigos (`codes`, ocultos a los socios), clases de prueba al registrarse (`trial`) y fecha de apertura (`open`, el horario empieza ese día).
 
+- Fichajes (registro de jornada): `clock_events`, nunca se borran; las correcciones de recepción son fichajes manuales con motivo. Recepción da acceso en Ajustes → Equipo (`admin_set_staff`) y el monitor crea su cuenta con «Crea tu acceso para fichar» (role `staff`). La ubicación solo se toma al fichar.
+
 ## Pendiente
 
 - Archivos adjuntos: de momento se guarda solo el nombre (falta Supabase Storage).
