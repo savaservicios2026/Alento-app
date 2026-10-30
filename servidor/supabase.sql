@@ -96,14 +96,51 @@ create table if not exists access_logs (
   created_at timestamptz not null default now()
 );
 
+-- Contador de cambios por centro: la app pregunta solo este número y descarga todo únicamente cuando cambia.
+create table if not exists center_rev (
+  center_id text primary key references centers(id) on delete cascade,
+  rev bigint not null default 0
+);
+
 do $$ declare t text; begin
-  foreach t in array array['centers','profiles','classes','bookings','notifs','messages','payments','access_logs'] loop
+  foreach t in array array['centers','profiles','classes','bookings','notifs','messages','payments','access_logs','center_rev'] loop
     execute format('alter table %I enable row level security', t);
     execute format('revoke all on %I from anon, authenticated', t);
   end loop;
 end $$;
 
 -- ---------- utilidades ----------
+create or replace function bump_rev() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare cid text;
+begin
+  if tg_table_name = 'bookings' then
+    select k.center_id into cid from classes k where k.id = (case when tg_op = 'DELETE' then old.class_id else new.class_id end);
+  elsif tg_table_name = 'centers' then
+    cid := case when tg_op = 'DELETE' then null else new.id end;
+  else
+    cid := case when tg_op = 'DELETE' then old.center_id else new.center_id end;
+  end if;
+  if cid is not null then
+    insert into center_rev (center_id, rev) values (cid, 1) on conflict (center_id) do update set rev = center_rev.rev + 1;
+  end if;
+  return null;
+end $$;
+do $$ declare t text; begin
+  foreach t in array array['centers','profiles','classes','bookings','notifs','messages','payments','access_logs'] loop
+    execute format('drop trigger if exists bump_rev on %I', t);
+    execute format('create trigger bump_rev after insert or update or delete on %I for each row execute function bump_rev()', t);
+  end loop;
+end $$;
+
+-- Ficha ligera: la foto y la firma se sustituyen por "@" + huella; la app las pide aparte (client_media) solo si no las tiene ya.
+create or replace function lite_ficha(f jsonb) returns jsonb
+language sql immutable as $$
+  select f - 'foto' - 'firma' || jsonb_strip_nulls(jsonb_build_object(
+    'foto',  case when length(f->>'foto')  > 200 then '@' || md5(f->>'foto')  else f->>'foto'  end,
+    'firma', case when length(f->>'firma') > 200 then '@' || md5(f->>'firma') else f->>'firma' end))
+$$;
+
 create or replace function me_profile() returns profiles
 language sql stable security definer set search_path = public as $$
   select * from profiles where auth_id = auth.uid() limit 1
@@ -188,7 +225,8 @@ begin
   perform ensure_classes(c.id);
   adm := p.role = 'admin';
   return jsonb_build_object(
-    'profile', jsonb_build_object('id', p.id, 'role', p.role, 'email', p.email, 'credits', p.credits, 'wallet', p.wallet, 'subs', p.subs, 'ficha', p.ficha),
+    'rev', (select coalesce((select r.rev from center_rev r where r.center_id = c.id), 0)),
+    'profile', jsonb_build_object('id', p.id, 'role', p.role, 'email', p.email, 'credits', p.credits, 'wallet', p.wallet, 'subs', p.subs, 'ficha', lite_ficha(p.ficha)),
     'center', jsonb_build_object('id', c.id, 'name', c.name, 'week', c.week, 'test_payments', c.test_payments,
       'cfg', case when adm then c.cfg else (c.cfg - 'codes') || jsonb_build_object('has_codes', jsonb_typeof(c.cfg->'codes') = 'array' and jsonb_array_length(c.cfg->'codes') > 0) end),
     'sold', (select coalesce(jsonb_object_agg(s.plan_id, s.n), '{}'::jsonb) from (
@@ -205,7 +243,7 @@ begin
         'pos', (select count(*) from bookings b where b.class_id = k.id and b.status = 'wait'
                  and b.created_at <= (select m.created_at from bookings m where m.class_id = k.id and m.profile_id = p.id and m.status = 'wait'))
       ) j from classes k where k.center_id = c.id and k.date between today_es() - 1 and start_day(c) + 14) t),
-    'clients', (select coalesce(jsonb_object_agg(x.id, x.ficha || jsonb_build_object('_credits', x.credits, '_cuenta', x.auth_id is not null, '_subs', x.subs)), '{}'::jsonb)
+    'clients', (select coalesce(jsonb_object_agg(x.id, lite_ficha(x.ficha) || jsonb_build_object('_credits', x.credits, '_cuenta', x.auth_id is not null, '_subs', x.subs)), '{}'::jsonb)
                 from profiles x where x.center_id = c.id and x.role = 'socio' and (adm or x.id = p.id)),
     'messages', (select coalesce(jsonb_agg(jsonb_build_object('id', m.id, 'thread', m.thread, 'from_center', m.from_center, 'text', m.text, 'kind', m.kind, 'cat', m.cat, 'read', m.read, 'ts', ms(m.created_at)) order by m.created_at), '[]'::jsonb)
                  from messages m where m.center_id = c.id and (adm or m.thread = p.id) and m.created_at > now() - interval '120 days'),
@@ -417,7 +455,10 @@ begin
   for k, x in select * from jsonb_each(coalesce(p->'fichas', '{}')) loop
     uid := k::uuid;
     if not (uid = me.id or adm) then raise exception 'FORBIDDEN'; end if;
-    update profiles set ficha = x - '_credits' - '_cuenta' - '_subs',
+    -- "@huella" en foto o firma = sin cambios: se conserva la guardada
+    update profiles set ficha = (x - '_credits' - '_cuenta' - '_subs')
+        || case when left(x->>'foto', 1) = '@' then jsonb_build_object('foto', ficha->'foto') else '{}'::jsonb end
+        || case when left(x->>'firma', 1) = '@' then jsonb_build_object('firma', ficha->'firma') else '{}'::jsonb end,
       email = case when x ? 'email' then lower(coalesce(x->>'email', '')) else email end
      where id = uid and center_id = me.center_id and role = 'socio';
   end loop;
@@ -492,13 +533,34 @@ begin
    where k.center_id = a.center_id and k.starts_at > now();
 end $$;
 
+-- Número de cambios del centro (la app lo consulta cada 20 s).
+create or replace function my_rev() returns bigint
+language plpgsql stable security definer set search_path = public as $$
+declare p profiles;
+begin
+  p := me_profile();
+  if p.id is null then return -1; end if;
+  return coalesce((select r.rev from center_rev r where r.center_id = p.center_id), 0);
+end $$;
+
+-- Foto y firma completas de las fichas indicadas (las propias o, para recepción, las del centro).
+create or replace function client_media(p_ids uuid[]) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare p profiles;
+begin
+  p := me_profile();
+  if p.id is null then raise exception 'NO_SESSION'; end if;
+  return (select coalesce(jsonb_object_agg(x.id, jsonb_build_object('foto', x.ficha->'foto', 'firma', x.ficha->'firma')), '{}'::jsonb)
+          from profiles x where x.id = any(p_ids) and x.center_id = p.center_id and (p.role = 'admin' or x.id = p.id));
+end $$;
+
 -- Solo las funciones públicas de la app se pueden llamar desde fuera.
 do $$ declare f text; begin
   foreach f in array array['me_profile()','ensure_classes(text)','notify_user(text,uuid,text)','promote(uuid)','require_admin()','handle_new_user()',
-                           'start_day(centers)','plan_of(centers,text)','code_pct(centers,text)'] loop
+                           'start_day(centers)','plan_of(centers,text)','code_pct(centers,text)','bump_rev()','lite_ficha(jsonb)'] loop
     execute format('revoke execute on function %s from public, anon, authenticated', f);
   end loop;
-  foreach f in array array['hydrate()','book_class(uuid)','cancel_booking(uuid)','buy_plan(text,text,text)','check_code(text)','push(jsonb)',
+  foreach f in array array['hydrate()','book_class(uuid)','cancel_booking(uuid)','buy_plan(text,text,text)','check_code(text)','my_rev()','client_media(uuid[])','push(jsonb)',
                            'admin_create_client(jsonb)','admin_add_credits(uuid,int,numeric,text,text)','admin_baja(uuid)','save_config(text,jsonb,jsonb)'] loop
     execute format('revoke execute on function %s from public, anon', f);
     execute format('grant execute on function %s to authenticated', f);

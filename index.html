@@ -3019,7 +3019,7 @@ function seedMsgs(now){
 // En modo servidor el estado S se rellena con hydrate() y los cambios vuelven con push() o con las funciones de reserva.
 // Las reservas, la lista de espera y los bonos los decide siempre el servidor, para que dos personas no cojan la misma plaza.
 const sb = LIVE ? window.supabase.createClient(SUPA.url, SUPA.key, { auth:{ persistSession:true, autoRefreshToken:true, detectSessionInUrl:true } }) : null;
-const L = { pid:null, email:'', loading:false, op:false, last:'', snap:{ fichas:{} }, attended:[], chain:Promise.resolve(), t:null };
+const L = { pid:null, email:'', loading:false, op:false, last:'', snap:{ fichas:{} }, attended:[], chain:Promise.resolve(), t:null, rev:null, full:0, media:{}, need:[] };
 const PEND = KEY + '-alta';
 const appUrl = () => location.origin + location.pathname;
 const ERRS = {
@@ -3055,6 +3055,28 @@ function normFicha(f){
   return c;
 }
 const cleanFicha = f => Object.fromEntries(Object.entries(f).filter(([k]) => k[0] !== '_'));
+// El servidor manda la foto y la firma como "@huella"; las imágenes se piden aparte y se guardan en L.media.
+// Al enviar una ficha, si la imagen no ha cambiado se devuelve la huella para no subirla otra vez.
+const MEDIA = ['foto', 'firma'];
+const wireFicha = f => { const o = cleanFicha(f); MEDIA.forEach(k => { if (f['_' + k + 'H'] && f[k] === f['_' + k + '0']) o[k] = f['_' + k + 'H']; }); return o; };
+const isRef = v => typeof v === 'string' && v[0] === '@';
+function fillMedia(){
+  const need = [];
+  Object.entries(S.clients).forEach(([id, f]) => MEDIA.forEach(k => {
+    if (!isRef(f[k])) return;
+    f['_' + k + 'H'] = f[k];
+    if (L.media[f[k]]){ f['_' + k + '0'] = f[k] = L.media[f[k]]; } else if (!need.includes(id)) need.push(id);
+  }));
+  return need;
+}
+async function loadMedia(ids){
+  try {
+    const r = await rpc('client_media', { p_ids:ids });
+    Object.entries(r || {}).forEach(([id, m]) => { const f = S.clients[id]; if (!f) return;
+      MEDIA.forEach(k => { const h = f['_' + k + 'H']; if (h && isRef(f[k]) && f[k] === h && m[k]){ L.media[h] = m[k]; f['_' + k + '0'] = f[k] = m[k]; } }); });
+    if (!isTyping()) render();
+  } catch(e){}
+}
 const cfgPayload = () => ({ sector:S.cfg.sector, cap:CAP, wait:WAIT_MAX, cancel:CANCEL_H, unit:SEC.unit,
   staff:S.cfg.staff, plans:S.cfg.plans, codes:S.cfg.codes, trial:S.cfg.trial || 0, open:S.cfg.open || '' });
 const weekPayload = () => Object.fromEntries(Object.entries(WEEK).map(([d, list]) => [d, list.map(([t, type, instr, level, cap]) => [t, type, instr, level, cap || (TYPES[type] && TYPES[type].cap) || CAP])]));
@@ -3095,7 +3117,8 @@ function applyHydrate(h){
   S.accessLog = (h.access || []).map(a => ({ _db:a.id, uid:a.uid, ok:a.ok, title:a.title, manual:a.manual, ts:a.ts }));
   syncNames(S.clients);
   if (adm){ const ids = Object.keys(SOCIOS); if (!SOCIOS[compose.sel]) compose.sel = ids[0] || ''; if (!SOCIOS[compose.uid]) compose.uid = ids[0] || ''; }
-  L.snap = { fichas:Object.fromEntries(Object.entries(S.clients).map(([id, f]) => [id, JSON.stringify(cleanFicha(f))])),
+  L.rev = h.rev; L.full = Date.now(); L.need = fillMedia();
+  L.snap = { fichas:Object.fromEntries(Object.entries(S.clients).map(([id, f]) => [id, JSON.stringify(wireFicha(f))])),
              wallet:JSON.stringify(S.wallet[p.id] || null), subs:JSON.stringify(S.subs[p.id] || null) };
 }
 
@@ -3114,7 +3137,7 @@ async function pushChanges(){
   if (rm.length) P.read_msgs = rm.map(m => m._db);
   if (rn.length) P.read_notifs = rn.map(n => n._db);
   const fichas = {};
-  Object.entries(S.clients).forEach(([id, f]) => { if (!adm && id !== L.pid) return; const j = JSON.stringify(cleanFicha(f)); if (j !== L.snap.fichas[id]) fichas[id] = j; });
+  Object.entries(S.clients).forEach(([id, f]) => { if (!adm && id !== L.pid) return; const j = JSON.stringify(wireFicha(f)); if (j !== L.snap.fichas[id]) fichas[id] = j; });
   if (Object.keys(fichas).length) P.fichas = Object.fromEntries(Object.entries(fichas).map(([id, j]) => [id, JSON.parse(j)]));
   const wj = JSON.stringify(S.wallet[L.pid] || null), sj = JSON.stringify(S.subs[L.pid] || null);
   if (!adm && wj !== L.snap.wallet) P.wallet = S.wallet[L.pid];
@@ -3143,10 +3166,11 @@ async function refresh(quiet){
     L.loading = false; await sb.auth.signOut();
     toGuest(); toast('Esta cuenta no está dada de alta en el centro. Escribe a recepción.'); return;
   }
-  const json = JSON.stringify(h);
-  if (quiet && (json === L.last || layer.innerHTML || isTyping() || L.op)) return;
+  const json = JSON.stringify({ ...h, rev:0 });
+  if (quiet && (json === L.last || layer.innerHTML || isTyping() || L.op)){ if (json === L.last){ L.rev = h.rev; L.full = Date.now(); } return; }
   L.last = json;
   applyHydrate(h);
+  if (L.need.length) loadMedia(L.need);
   if (h.profile.role === 'admin' && !Object.keys(h.center.week || {}).length){
     // Primera vez que entra recepción: se sube la plantilla semanal y se crean las clases de los próximos 14 días.
     try { await rpc('save_config', { p_name:S.cfg.name, p_cfg:cfgPayload(), p_week:weekPayload() }); L.last = ''; return refresh(); }
@@ -3189,7 +3213,7 @@ async function liveRegister(r, root, onDone){
       await sync();
       const id = await rpc('admin_create_client', { p_ficha:ficha });
       S.clients[id] = normFicha(ficha); S.credits[id] = 0; syncNames(S.clients); welcomeClient(id, true);
-      L.snap.fichas[id] = JSON.stringify(cleanFicha(S.clients[id]));
+      L.snap.fichas[id] = JSON.stringify(wireFicha(S.clients[id]));
       reg = null; await sync(); L.last = ''; await refresh(); onDone(id); return;
     }
     const { data, error } = await sb.auth.signUp({ email:ficha.email, password:r.d.pass,
@@ -3251,8 +3275,14 @@ async function startLive(){
   let session = null;
   try { session = (await sb.auth.getSession()).data.session; } catch(e){}
   if (session) await refresh(); else { L.loading = false; render(); }
-  setInterval(() => { if (document.visibilityState === 'visible' && L.pid) refresh(true); }, 20000);
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && L.pid) refresh(true); });
+  setInterval(() => { if (document.visibilityState === 'visible' && L.pid) poll(); }, 20000);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && L.pid) poll(); });
+}
+// Cada 20 s solo se pregunta el número de cambios del centro; se descarga todo cuando cambia (o cada 10 min, por el cambio de día).
+async function poll(){
+  if (L.op || layer.innerHTML || isTyping()) return;
+  try { if (await rpc('my_rev') === L.rev && Date.now() - L.full < 6e5) return; } catch(e){ return; }
+  refresh(true);
 }
 
 // Recepción suma clases cuando el cliente paga en el mostrador (también en la demo).
@@ -3444,7 +3474,7 @@ function renderHeader(){
   const um = unreadMsgs(me());
   ['#msgBadge','#msgBadge2'].forEach(id => { const mb = $(id); mb.hidden = !um; mb.textContent = um; });
   const mbtn = $('#meBtn'); mbtn.hidden = isAdmin() || isGuest(); $('#qrBtn').hidden = mbtn.hidden;
-  if (!mbtn.hidden){ const c = S.clients[me()]; if (c && c.foto) mbtn.innerHTML = `<img src="${c.foto}" alt="">`; else mbtn.textContent = c ? initials(c) : ''; mbtn.setAttribute('aria-pressed', S.tab === 'perfil'); }
+  if (!mbtn.hidden){ const c = S.clients[me()]; if (c && c.foto && c.foto[0] !== "@") mbtn.innerHTML = `<img src="${c.foto}" alt="">`; else mbtn.textContent = c ? initials(c) : ''; mbtn.setAttribute('aria-pressed', S.tab === 'perfil'); }
 }
 
 const ISO = cls => `<svg class="${cls||''}" viewBox="0 0 10 10" aria-hidden="true"><use href="#alento-iso"/></svg>`;
@@ -3906,7 +3936,7 @@ function missing(c){
 }
 // Avatar del cliente: su foto si la ha puesto, si no sus iniciales.
 const initials = c => ((c.nombre || '?')[0] + ((c.apellidos || '')[0] || '')).toUpperCase();
-const avatar = (c, cls = '') => `<span class="av ${cls}">${c && c.foto ? `<img src="${c.foto}" alt="">` : esc(c ? initials(c) : '?')}</span>`;
+const avatar = (c, cls = '') => `<span class="av ${cls}">${c && c.foto && c.foto[0] !== '@' ? `<img src="${c.foto}" alt="">` : esc(c ? initials(c) : '?')}</span>`;
 // Reduce la foto a un cuadrado de 192 px para que ocupe poco (unos 15 KB).
 function photoFrom(file){
   return new Promise((ok, ko) => {
@@ -3937,7 +3967,7 @@ function mountSig(canvas, onChange){
   return () => { ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,canvas.width,canvas.height); size(); dirty = false; onChange(null); };
 }
 const sigBox = id => `<div class="sigwrap"><canvas class="sig" id="${id}" aria-label="Zona de firma"></canvas><span class="sig-hint">Firma aquí con el dedo o el ratón</span></div><button type="button" class="linkbtn" id="${id}Clear" style="margin-top:6px">Borrar firma</button>`;
-const sigShow = c => c.firma === 'demo' ? `<div class="sigview demo">${esc(c.nombre)} ${esc(c.apellidos.split(' ')[0])}</div>` : c.firma ? `<div class="sigview"><img src="${c.firma}" alt="Firma de ${esc(c.nombre)}"></div>` : '<p class="muted" style="margin:0">Sin firma todavía.</p>';
+const sigShow = c => isRef(c.firma) ? '<p class="muted" style="margin:0">Cargando firma…</p>' : c.firma === 'demo' ? `<div class="sigview demo">${esc(c.nombre)} ${esc(c.apellidos.split(' ')[0])}</div>` : c.firma ? `<div class="sigview"><img src="${c.firma}" alt="Firma de ${esc(c.nombre)}"></div>` : '<p class="muted" style="margin:0">Sin firma todavía.</p>';
 function docBlock(d, checked, prefix){
   return `<div class="docrow"><label class="check"><input type="checkbox" id="${prefix}${d.id}" data-doc="${d.id}" ${checked ? 'checked' : ''}><span><b>${d.title}</b> <span class="tagreq ${d.req ? 'req' : ''}">${d.req ? 'Obligatorio' : 'Opcional'}</span></span></label>
     <details><summary>Leer documento (v${d.v})</summary><p>${d.body}</p></details></div>`;
@@ -4412,6 +4442,8 @@ function afterAjustes(root){
       if (!keys[r[2]]) return toastErr(`Elige ${sec(d).staffLabel.toLowerCase()} para la ${SEC.unit} de las ${r[0]} del ${dayName(n)}.`);
       if (!(Number.isInteger(r[4]) && r[4] >= 1 && r[4] <= 60)) return toastErr(`Las plazas de la ${SEC.unit} de las ${r[0]} del ${dayName(n)} deben estar entre 1 y 60.`);
     }
+    // si cambia el cupo por defecto, las clases que lo usaban pasan al nuevo
+    if (d.cap !== CAP) Object.values(d.week).forEach(list => list.forEach(r => { if (r[4] === CAP) r[4] = d.cap; }));
     // limpieza antes de guardar
     d.plans = d.plans.map(p => Object.fromEntries(Object.entries({ ...p, name:p.name.trim() }).filter(([k, v]) => v !== null && v !== '' && v !== false && !(Array.isArray(v) && !v.length))));
     d.week = Object.fromEntries(Object.entries(d.week).filter(([, list]) => list.length).map(([n, list]) => [n, list.slice().sort((a, b) => a[0].localeCompare(b[0]))]));
