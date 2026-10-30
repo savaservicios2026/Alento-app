@@ -192,7 +192,7 @@ button.cal-d:hover{outline:1.5px solid var(--brand)}.cal-d.on{background:var(--b
 .clock-board{table-layout:fixed;width:100%;min-width:0;border-collapse:collapse;font-size:12.5px}.clock-board th,.clock-board td{padding:6px 3px;text-align:center;vertical-align:top;border-bottom:1px solid var(--line)}
 .clock-board thead th:first-child,.clock-board tbody th{width:52px;text-align:left;font-weight:500;color:var(--ink-2);white-space:nowrap}
 .clock-board td div{line-height:1.35}.clock-board td b{display:block;margin-top:2px}.clock-board .cb-empty{color:var(--ink-3,#bbb)}.clock-board .status{font-size:10.5px;padding:1px 5px}
-.cb-who{all:unset;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:4px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}.clock-board thead small{display:block;color:var(--ink-2);font-weight:400}
+.cb-who{all:unset;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:4px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}.clock-board thead small{display:block;color:var(--ink-2);font-weight:400;white-space:nowrap;font-size:11px}.clock-board thead th{text-transform:none;letter-spacing:0;font-size:13px}
 .cb-dot{width:8px;height:8px;border-radius:50%;background:#c9c4bb;flex:none}.cb-dot.ok{background:#3f9b6b}.cb-dot.wait{background:#d49a2a}
 .clock-totals{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}.clock-table a{font-size:12px;color:var(--ink-2)}
 .aj-sec{margin-top:26px;padding-top:18px;border-top:1px solid var(--line)}.aj-sec > p.muted{font-size:13px;margin:4px 0 0}
@@ -4704,7 +4704,12 @@ function viewFichajes(){
     : st === 'pause' ? `<button class="btn accent" data-clock="resume">Volver de la pausa</button><button class="btn ghost" data-clock="out">Fichar salida</button>`
     : `<button class="btn" data-clock="pause">Pausa</button><button class="btn accent" data-clock="out">Fichar salida</button>`;
   const days = workdays(monthEvents()), adm = isAdmin();
-  const people = adm ? (LIVE ? Object.entries(L.staff || {}).map(([id]) => id).concat(L.pid) : Object.keys(S.staffAccess || {}).map(k => 'st_' + k).concat(ADMIN)) : [];
+  const withAcc = adm ? (LIVE ? Object.entries(L.staff || {}).map(([id]) => id).concat(L.pid) : Object.keys(S.staffAccess || {}).map(k => 'st_' + k).concat(ADMIN)) : [];
+  // Todo el equipo de Ajustes en el desplegable, tenga acceso o no (los que no, con «k:clave»).
+  const team = adm ? Object.keys(INSTR).map(k => { const a = staffAccess(k); return a ? a.id : 'k:' + k; }) : [];
+  const people = withAcc.filter(u => !team.includes(u)).reduce((a, u) => a.concat(u), team.slice());
+  const pname = u => u.startsWith('k:') ? `${(INSTR[u.slice(2)] || {}).name || u.slice(2)} (sin acceso)` : clkName(u);
+  const noAcc = adm && CLK.uid.startsWith('k:');
   const totals = {}; days.forEach(w => totals[w.uid] = (totals[w.uid] || 0) + w.worked);
   return `<div class="view-head"><div><h1>Fichajes</h1><p class="muted">${adm ? 'Registro de jornada del equipo.' : 'Tu registro de jornada.'}</p></div></div>
   <section class="panel clock-panel">
@@ -4717,11 +4722,11 @@ function viewFichajes(){
   <h2 class="section-t desc">${adm ? 'Registro del equipo' : 'Tus jornadas'}</h2>
   <div class="clock-tools">
     <label class="field">Mes<input type="month" id="ck_month" value="${CLK.month}" max="${ymd(new Date()).slice(0, 7)}"></label>
-    ${adm ? `<label class="field">Persona<select id="ck_uid"><option value="">Todo el equipo</option>${people.map(u => `<option value="${u}" ${u === CLK.uid ? 'selected' : ''}>${esc(clkName(u))}</option>`).join('')}</select></label>` : ''}
+    ${adm ? `<label class="field">Persona<select id="ck_uid"><option value="">Todo el equipo</option>${people.map(u => `<option value="${u}" ${u === CLK.uid ? 'selected' : ''}>${esc(pname(u))}</option>`).join('')}</select></label>` : ''}
     <div class="actions" style="margin:0;align-self:flex-end"><button class="btn ghost sm" id="ck_csv">Descargar Excel</button>${adm ? '<button class="btn ghost sm" id="ck_add">Añadir fichaje olvidado</button>' : ''}</div>
   </div>
   ${adm && CLK.uid && Object.keys(totals).length > 1 ? `<div class="clock-totals">${Object.entries(totals).map(([u, ms]) => `<span class="chip">${esc(clkName(u))}: <b>${dur(ms)}</b></span>`).join('')}</div>` : ''}
-  ${LIVE && !CLK.data ? `<div class="empty">${ISO()}<p>Cargando…</p></div>` : adm && !CLK.uid ? clockBoard(days, people) : days.length ? `<div class="table-wrap"><table class="clock-table"><thead><tr><th>Día</th>${adm ? '<th>Persona</th>' : ''}<th>Entrada</th><th>Salida</th><th>Pausas</th><th class="r">Trabajado</th></tr></thead><tbody>
+  ${noAcc ? `<div class="empty">${ISO()}<p>${esc((INSTR[CLK.uid.slice(2)] || {}).name || '')} todavía no tiene acceso para fichar.</p><button class="btn sm" data-who="${CLK.uid}">Darle acceso en Equipo</button></div>` : LIVE && !CLK.data ? `<div class="empty">${ISO()}<p>Cargando…</p></div>` : adm && !CLK.uid ? clockBoard(days, people) : days.length ? `<div class="table-wrap"><table class="clock-table"><thead><tr><th>Día</th>${adm ? '<th>Persona</th>' : ''}<th>Entrada</th><th>Salida</th><th>Pausas</th><th class="r">Trabajado</th></tr></thead><tbody>
     ${days.map(w => `<tr><td class="num">${fmtDay(w.day, { weekday:'short', day:'numeric', month:'short' })}</td>${adm ? `<td>${esc(clkName(w.uid))}</td>` : ''}
       <td class="num">${w.start ? hm(w.start.at) : '—'} ${mapLink(w.start)}</td>
       <td class="num">${w.end ? hm(w.end.at) : w.live ? '<span class="status ok">en curso</span>' : '<span class="status wait">sin salida</span>'} ${mapLink(w.end)}</td>
@@ -4732,6 +4737,7 @@ function viewFichajes(){
 function afterFichajes(root){
   if (LIVE){
     const key = [CLK.month, CLK.uid, L.rev].join('|');
+    if (CLK.uid.startsWith('k:')) CLK.key = key;
     if (CLK.key !== key){ CLK.key = key; rpc('clock_month', { p_month:CLK.month, p_uid:CLK.uid || null }).then(r => { CLK.data = r || []; if (S.tab === 'fichajes' && !isTyping()) render(); }).catch(e => toast(errText(e))); }
   }
   root.querySelectorAll('[data-clock]').forEach(b => b.onclick = async () => {
