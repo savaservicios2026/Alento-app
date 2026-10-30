@@ -37,6 +37,10 @@ Cuando cambie `supabase.sql`, vuelve a pegarlo entero en el SQL Editor y pulsa R
 - Documentos en Storage, bucket privado `equipo` (10 MB por archivo), ruta `centro/perfil/carpeta/fecha-nombre`, carpetas `contratos`, `nominas`, `personal`.
 - Políticas con `equipo_access(name, write)`: admin todo en su centro; el trabajador lee lo suyo y solo sube/borra en `personal`.
 
+### Página pública y pegatina
+- `?info` muestra horario semanal, tarifas, clase de prueba, apertura y contacto sin iniciar sesión. Datos de `public_info(center)`, la única función abierta a `anon` (no devuelve clientes ni códigos).
+- Ajustes → «Página pública y pegatina»: contacto (`cfg.contact`: dir, tel, wa, insta) y botón «Imprimir pegatina» (A5 con el QR a `?info`).
+
 ## Pendiente
 
 - Archivos adjuntos: de momento se guarda solo el nombre (falta Supabase Storage).

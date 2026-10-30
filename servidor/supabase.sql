@@ -562,6 +562,17 @@ begin
    where k.center_id = a.center_id and k.starts_at > now();
 end $$;
 
+-- Página pública (QR de la pegatina): nombre, horario, tarifas, prueba gratis, apertura y contacto. Sin datos de clientes ni códigos.
+create or replace function public_info(p_center text) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object('name', c.name, 'week', c.week,
+    'cfg', jsonb_strip_nulls(jsonb_build_object('sector', c.cfg->'sector', 'unit', c.cfg->'unit', 'cap', c.cfg->'cap', 'staff', c.cfg->'staff', 'plans', c.cfg->'plans',
+                                                 'trial', c.cfg->'trial', 'open', c.cfg->'open', 'contact', c.cfg->'contact')),
+    'sold', (select coalesce(jsonb_object_agg(s.plan_id, s.n), '{}'::jsonb) from (
+      select y.plan_id, count(*) n from payments y where y.center_id = c.id and y.plan_id is not null group by y.plan_id) s))
+  from centers c where c.id = p_center
+$$;
+
 -- Número de cambios del centro (la app lo consulta cada 20 s).
 create or replace function my_rev() returns bigint
 language plpgsql stable security definer set search_path = public as $$
@@ -710,7 +721,18 @@ do $$ declare f text; begin
     execute format('revoke execute on function %s from public, anon', f);
     execute format('grant execute on function %s to authenticated', f);
   end loop;
+  revoke execute on function public_info(text) from public;
+  grant execute on function public_info(text) to anon, authenticated;
 end $$;
+
+-- ---------- cambios de actividades (pilates) ----------
+-- 2026-10-30: se retira Prenatal y Stretch & Flow pasa a llamarse Stretch. Se puede ejecutar varias veces.
+update classes k set type = 'Stretch' where k.type = 'Stretch & Flow';
+delete from classes k where k.type = 'Prenatal' and not exists (select 1 from bookings b where b.class_id = k.id);
+update centers c set week = (select coalesce(jsonb_object_agg(e.d, (select coalesce(jsonb_agg(case when r->>1 = 'Stretch & Flow' then jsonb_set(r, '{1}', '"Stretch"') else r end), '[]'::jsonb)
+                                                            from jsonb_array_elements(e.list) r where r->>1 <> 'Prenatal')), '{}'::jsonb)
+                             from jsonb_each(c.week) e(d, list))
+ where c.week::text like '%Prenatal%' or c.week::text like '%Stretch & Flow%';
 
 -- ---------- el centro ----------
 insert into centers (id, name, cfg) values ('alento', 'Alento', '{"cap":8,"wait":2,"cancel":12,"unit":"clase","sector":"pilates"}')

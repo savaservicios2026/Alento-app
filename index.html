@@ -161,6 +161,14 @@ main{padding-block:24px 64px}
 .plan .was{font-size:15px;color:var(--ink-2);font-weight:400}.plan .left{color:var(--accent);font-weight:500}
 .promo{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 16px}.promo input{flex:1 1 200px;min-width:0;max-width:320px;text-transform:uppercase}
 .alert.opening{margin:0 0 14px}
+.info{max-width:960px;margin:0 auto}.info-hero{text-align:center;padding:18px 0 6px}.info-hero h1{margin:8px 0 6px}.info-hero .iso-big{width:44px;height:auto;color:var(--ink)}
+.info-open{font-weight:600;color:var(--ink);margin:6px 0}.info-trial{display:inline-block;background:var(--surface-2);border-radius:999px;padding:6px 14px;margin:6px 0;font-size:14px}
+.info-week{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}.info-day h3{margin:0 0 8px;font-size:15px}.info-day ul{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.info-day li{display:flex;gap:10px;font-size:14px}.info-day li b{min-width:44px}.info-day li span{display:flex;flex-direction:column;min-width:0}.info-day li small{font-size:12px}
+.info-plans{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}.info-plan{position:relative}.info-plan ul{margin:8px 0 0;padding-left:18px;font-size:13px;color:var(--ink-2)}
+.info-types{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}.info-types .panel{display:flex;flex-direction:column;gap:2px}.info-types p{margin:6px 0 0;font-size:13.5px;color:var(--ink-2)}
+.info-contact{display:flex;flex-direction:column;gap:10px}.info-contact a{color:var(--ink)}
+.aj-sticker{display:flex;gap:16px;align-items:center;margin-top:14px;flex-wrap:wrap}.aj-qr{width:128px;flex:none}.aj-qr svg{width:100%;height:auto;display:block;border-radius:8px}
 .docfolder{border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-top:10px;background:var(--bg)}
 .doclist{list-style:none;margin:8px 0 0;padding:0}.doclist li{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:8px 0;border-top:1px solid var(--line);font-size:13.5px}
 .doclist .dn{flex:1 1 180px;min-width:0;overflow-wrap:anywhere}
@@ -2865,8 +2873,7 @@ const PIL_TYPES = {
   'Reformer':       { cls:'t-ref', room:'Sala Reformer', dur:50, desc:'Máquina con muelles. Fuerza, control y alineación.' },
   'Mat':            { cls:'t-mat', room:'Sala Suelo',    dur:50, desc:'Suelo con aros y pelotas. Core y movilidad.' },
   'Barre':          { cls:'t-bar', room:'Sala Suelo',    dur:45, desc:'Pilates con barra a ritmo medio.' },
-  'Prenatal':       { cls:'t-pre', room:'Sala Suelo',    dur:50, desc:'Adaptada a cada trimestre del embarazo.' },
-  'Stretch & Flow': { cls:'t-str', room:'Sala Suelo',    dur:45, desc:'Movilidad y estiramientos guiados.' }
+  'Stretch':        { cls:'t-str', room:'Sala Suelo',    dur:45, desc:'Movilidad y estiramientos guiados.' }
 };
 const PIL_STAFF = {
   laura:{ name:'Laura Méndez', ini:'LM' }, sergio:{ name:'Sergio Paz', ini:'SP' },
@@ -2875,10 +2882,10 @@ const PIL_STAFF = {
 // Plantilla semanal: 0 domingo … 6 sábado → [hora, tipo, instructor, nivel]
 const PIL_WEEK = {
   1:[['08:00','Reformer','laura','Inicial'],['09:30','Mat','sergio','Todos'],['13:30','Reformer','nerea','Intermedio'],['18:00','Reformer','laura','Intermedio'],['19:15','Barre','sergio','Todos'],['20:30','Reformer','nerea','Avanzado']],
-  2:[['08:00','Mat','sergio','Todos'],['10:00','Prenatal','ana','Todos'],['18:00','Reformer','nerea','Inicial'],['19:15','Reformer','laura','Intermedio'],['20:30','Stretch & Flow','ana','Todos']],
+  2:[['08:00','Mat','sergio','Todos'],['18:00','Reformer','nerea','Inicial'],['19:15','Reformer','laura','Intermedio'],['20:30','Stretch','ana','Todos']],
   3:[['08:00','Reformer','nerea','Intermedio'],['09:30','Barre','sergio','Todos'],['13:30','Reformer','laura','Inicial'],['18:00','Mat','ana','Todos'],['19:15','Reformer','nerea','Avanzado'],['20:30','Reformer','laura','Inicial']],
-  4:[['08:00','Mat','sergio','Todos'],['10:00','Prenatal','ana','Todos'],['18:00','Reformer','laura','Intermedio'],['19:15','Reformer','nerea','Intermedio'],['20:30','Barre','sergio','Todos']],
-  5:[['08:00','Reformer','laura','Todos'],['09:30','Mat','ana','Todos'],['18:00','Reformer','nerea','Intermedio'],['19:15','Stretch & Flow','ana','Todos']],
+  4:[['08:00','Mat','sergio','Todos'],['18:00','Reformer','laura','Intermedio'],['19:15','Reformer','nerea','Intermedio'],['20:30','Barre','sergio','Todos']],
+  5:[['08:00','Reformer','laura','Todos'],['09:30','Mat','ana','Todos'],['18:00','Reformer','nerea','Intermedio'],['19:15','Stretch','ana','Todos']],
   6:[['09:30','Reformer','laura','Todos'],['11:00','Mat','sergio','Todos']]
 };
 // ---------- sectores ----------
@@ -2923,12 +2930,15 @@ const SECTORS = {
     week:weekFrom(['07:00','08:00','09:00','12:00','17:00','18:00','19:00','20:00'],['09:00','10:00'],[['Sesión individual','hugo','Todos'],['Sesión individual','paula','Todos'],['Entreno en pareja','hugo','Todos'],['Grupo reducido','paula','Todos'],['Valoración inicial','hugo','Todos'],['Sesión individual','paula','Todos']]) }
 };
 let SEC, TYPES, INSTR, WEEK, OPEN = '';
+// Actividades retiradas o renombradas: las filas antiguas del horario se adaptan o se quitan.
+const RENAMED = { 'Stretch & Flow':'Stretch' };
+const cleanWeek = w => Object.fromEntries(Object.entries(w).map(([d, list]) => [d, (list || []).map(r => RENAMED[r[1]] ? [r[0], RENAMED[r[1]], ...r.slice(2)] : r).filter(r => TYPES[r[1]])]));
 function applySector(cfg){
   SEC = SECTORS[cfg.sector] || SECTORS.pilates;
   TYPES = { ...SEC.types }; INSTR = { ...SEC.staff }; WEEK = SEC.week;
   // Ajustes del centro: equipo, horario semanal y fecha de apertura propios
   if (Array.isArray(cfg.staff) && cfg.staff.length) INSTR = staff(cfg.staff);
-  if (cfg.week && Object.keys(cfg.week).length) WEEK = cfg.week;
+  if (cfg.week && Object.keys(cfg.week).length) WEEK = cleanWeek(cfg.week);
   OPEN = cfg.open || '';
   CAP = cfg.cap; WAIT_MAX = cfg.wait; CANCEL_H = cfg.cancel;
 }
@@ -3037,6 +3047,9 @@ const sb = LIVE ? window.supabase.createClient(SUPA.url, SUPA.key, { auth:{ pers
 const L = { pid:null, email:'', loading:false, op:false, last:'', snap:{ fichas:{} }, attended:[], chain:Promise.resolve(), t:null, rev:null, full:0, media:{}, need:[] };
 const PEND = KEY + '-alta';
 const appUrl = () => location.origin + location.pathname;
+// ?info abre la página pública (horarios y tarifas) sin iniciar sesión: es la que abre el QR de la pegatina.
+const INFO = /[?&]info\b/.test(location.search);
+const infoUrl = () => appUrl() + '?info';
 const ERRS = {
   NO_CREDITS:'No te quedan clases en el bono.', FULL:'Completo y con la lista de espera llena.', STARTED:'Esta clase ya ha empezado.',
   ALREADY:'Ya estás apuntada a esta clase.', FORBIDDEN:'No tienes permiso para hacer esto.', NO_SESSION:'Tu sesión ha caducado. Vuelve a entrar.',
@@ -3094,7 +3107,7 @@ async function loadMedia(ids){
   } catch(e){}
 }
 const cfgPayload = () => ({ sector:S.cfg.sector, cap:CAP, wait:WAIT_MAX, cancel:CANCEL_H, unit:SEC.unit,
-  staff:S.cfg.staff, plans:S.cfg.plans, codes:S.cfg.codes, trial:S.cfg.trial || 0, open:S.cfg.open || '' });
+  staff:S.cfg.staff, plans:S.cfg.plans, codes:S.cfg.codes, trial:S.cfg.trial || 0, open:S.cfg.open || '', contact:S.cfg.contact || {} });
 const weekPayload = () => Object.fromEntries(Object.entries(WEEK).map(([d, list]) => [d, list.map(([t, type, instr, level, cap]) => [t, type, instr, level, cap || (TYPES[type] && TYPES[type].cap) || CAP])]));
 const isTyping = () => { const a = document.activeElement; return !!a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && !!a.value; };
 
@@ -3117,7 +3130,7 @@ function applyHydrate(h){
     if (p.subs) S.subs[p.id] = p.subs; else delete S.subs[p.id];
   }
   S.classes = (h.classes || []).map(k => {
-    const c = { id:k.id, date:k.date, time:k.time, type:k.type, instr:k.instr, level:k.level, cap:k.cap };
+    const c = { id:k.id, date:k.date, time:k.time, type:RENAMED[k.type] || k.type, instr:k.instr, level:k.level, cap:k.cap };
     if (!TYPES[c.type]) TYPES[c.type] = { cls:'t-mat', room:'', dur:50, desc:'' };
     if (!INSTR[c.instr]) INSTR[c.instr] = { name:c.instr || 'Por confirmar', ini:(c.instr || '?').slice(0,2).toUpperCase() };
     if (adm){ c.booked = k.booked || []; c.wait = k.wait || []; c.attended = k.attended || []; }
@@ -3311,6 +3324,7 @@ function liveBaja(uid, c){
 }
 async function startLive(){
   document.querySelector('.demo-band').hidden = true;
+  if (INFO) return loadInfo();
   $('#resetBtn').hidden = true;
   const ft = document.querySelector('footer span'); if (ft) ft.textContent = 'Pagos de prueba: todavía no se cobra nada desde la app.';
   L.loading = true; render();
@@ -4341,7 +4355,7 @@ const DOW = [[1,'L','lunes'],[2,'M','martes'],[3,'X','miércoles'],[4,'J','jueve
 // Borrador de Ajustes: incluye horario, equipo, bonos, códigos y apertura para editarlos sin tocar S hasta guardar.
 function newDraft(){
   const d = clone({ ...S.cfg, week:WEEK, staff:Object.values(INSTR).map(x => x.name), plans:plans(), codes:S.cfg.codes || [] });
-  d.trial = d.trial || 0; d.open = d.open || '';
+  d.trial = d.trial || 0; d.open = d.open || ''; d.contact = { dir:'', tel:'', wa:'', insta:'', ...(d.contact || {}) };
   Object.values(d.week).forEach(list => list.forEach(r => { if (!r[4]) r[4] = (TYPES[r[1]] && TYPES[r[1]].cap) || CAP; }));
   return d;
 }
@@ -4384,6 +4398,20 @@ function viewAjustes(){
         ${fld('Válido hasta', `codes.${i}.until`, c.until, 'type="date"')}
       </div><div class="aj-row"><div class="aj-checks" style="margin:0">${chk('Activo', `codes.${i}.on`, c.on !== false)}</div><button type="button" class="linkbtn" data-act="del-code" data-i="${i}">Quitar código</button></div></div>`).join('')}
       <button type="button" class="btn ghost sm" data-act="add-code" style="margin-top:12px">Añadir código</button>
+    </section>
+
+    <section class="aj-sec"><h2>Página pública y pegatina</h2>
+      <p class="muted">Quien escanee la pegatina de la puerta ve el horario, las tarifas y estos datos de contacto, sin crear cuenta. Se actualiza sola con lo que guardes aquí.</p>
+      <div class="grid2">
+        ${fld('Dirección', 'contact.dir', d.contact.dir, 'placeholder="Rúa ..., Santiago"')}
+        ${fld('Teléfono', 'contact.tel', d.contact.tel, 'type="tel" inputmode="tel"')}
+        ${fld('WhatsApp (si es otro número)', 'contact.wa', d.contact.wa, 'type="tel" inputmode="tel"')}
+        ${fld('Instagram', 'contact.insta', d.contact.insta, 'placeholder="@alento"')}
+      </div>
+      <div class="aj-sticker"><div class="aj-qr">${qrSvg(infoUrl())}</div><div>
+        <p style="margin:0 0 10px;font-size:14px;word-break:break-all"><a href="${infoUrl()}" target="_blank" rel="noopener">${esc(infoUrl().replace(/^https?:\/\//, ''))}</a></p>
+        <div class="row-btns"><button type="button" class="btn sm" id="aj_sticker">Imprimir pegatina</button><a class="btn ghost sm" href="${infoUrl()}" target="_blank" rel="noopener">Ver la página</a></div>
+        <p class="muted" style="font-size:12px;margin:8px 0 0">Tamaño A5. Guarda los cambios antes de imprimir para que la página muestre lo último.</p></div></div>
     </section>
 
     <section class="aj-sec"><h2>Bonos y precios</h2>
@@ -4442,6 +4470,7 @@ function setPath(o, path, v){ const ks = path.split('.'); let t = o; ks.slice(0,
 function afterAjustes(root){
   const d = cfgDraft;
   bindLogout(root);
+  const stk = root.querySelector('#aj_sticker'); if (stk) stk.onclick = printSticker;
   root.querySelectorAll('[data-sector]').forEach(b => b.onclick = () => {
     const k = b.dataset.sector; if (k === d.sector) return;
     Object.assign(d, { sector:k, cap:SECTORS[k].cap, wait:SECTORS[k].wait, cancel:SECTORS[k].cancel, week:clone(SECTORS[k].week), staff:Object.values(SECTORS[k].staff).map(x => x.name) });
@@ -4954,11 +4983,80 @@ function afterAcceso(root){
   };
 }
 
+// ---------- página pública (pegatina con QR en la puerta) ----------
+async function loadInfo(){
+  L.loading = true; render();
+  try {
+    const c = await rpc('public_info', { p_center:SUPA.center });
+    if (c){
+      S.cfg = { ...defaultCfg(), ...(c.cfg || {}), name:c.name };
+      if (c.week && Object.keys(c.week).length) S.cfg.week = c.week;
+      if (EDITION === 'alento' || !SECTORS[S.cfg.sector]) S.cfg.sector = 'pilates';
+      L.sold = c.sold || {}; applySector(S.cfg);
+    }
+  } catch(e){ L.infoErr = true; }
+  L.loading = false; render();
+}
+function viewInfo(){
+  const ct = S.cfg.contact || {}, today = ymd(new Date()), soon = OPEN && OPEN > today;
+  const shown = plans().filter(planOpen).sort((a, b) => !!(b.until || b.limit) - !!(a.until || a.limit));
+  const days = DOW.filter(([d]) => (WEEK[d] || []).length).map(([d, , n]) => [d, cap1(n)]);
+  const tel = (ct.tel || '').replace(/[^\d+]/g, ''), wa = (ct.wa || ct.tel || '').replace(/\D/g, '');
+  const insta = (ct.insta || '').replace(/^@/, '').replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/.*$/, '');
+  return `<div class="info">
+  <section class="info-hero"><svg class="iso-big" viewBox="0 0 10 13.5" aria-hidden="true"><use href="#alento-iso"/></svg>
+    <h1>${esc(S.cfg.name)} · ${cap1(SEC.noun)}</h1>
+    ${soon ? `<p class="info-open">Abrimos el ${fmtDay(OPEN)}. Ya puedes reservar y comprar tu bono.</p>` : `<p class="muted">Reserva tus ${SEC.units} desde el móvil en un minuto.</p>`}
+    ${S.cfg.trial ? `<p class="info-trial">Tu primera ${S.cfg.trial > 1 ? `${S.cfg.trial} ${SEC.units} gratis` : `${SEC.unit} es gratis`} al crear tu cuenta.</p>` : ''}
+    <div class="actions" style="justify-content:center"><a class="btn accent" href="${appUrl()}#registro">Crear cuenta y reservar</a><a class="btn ghost" href="${appUrl()}">Ya tengo cuenta</a></div>
+  </section>
+  ${L.infoErr ? '<div class="alert">No se ha podido cargar la información. Vuelve a intentarlo en un momento.</div>' : ''}
+  <h2 class="section-t desc">Horario semanal</h2>
+  <div class="info-week">${days.map(([d, name]) => `<div class="panel info-day"><h3>${name}</h3><ul>${[...WEEK[d]].sort((a, b) => a[0].localeCompare(b[0])).map(([t, type, ins, level]) =>
+    `<li><b class="num">${t}</b><span>${esc(type)}${level && level !== 'Todos' ? ` <small class="muted">· ${esc(level)}</small>` : ''}<small class="muted">${esc((INSTR[ins] || {}).name || '')}</small></span></li>`).join('')}</ul></div>`).join('') || '<p class="muted">El horario se publicará muy pronto.</p>'}</div>
+  <h2 class="section-t desc">Tarifas</h2>
+  <div class="info-plans">${shown.map(p => { const left = p.limit ? p.limit - planSold(p.id) : null, special = p.until || p.limit;
+    return `<div class="panel info-plan ${special ? 'pop' : ''}">${special ? `<span class="tag desc">${esc(p.tag || 'Preventa')}</span>` : ''}<div class="desc muted">${esc(p.name)}</div>
+      <div class="price num">${eur(p.price)}${p.recurring ? '<small class="per"> /mes</small>' : ''}</div><div class="per">${p.classes} ${U(p.classes)}</div>
+      ${special ? `<div class="per left">${[p.until ? `Hasta el ${fmtDay(p.until, { day:'numeric', month:'short' })}` : '', left !== null ? (left <= 0 ? 'Agotado' : `Quedan ${left}`) : ''].filter(Boolean).join(' · ')}</div>` : ''}
+      <ul>${perksOf(p).map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>`; }).join('')}</div>
+  <h2 class="section-t desc">Nuestras ${SEC.units}</h2>
+  <div class="info-types">${Object.entries(TYPES).map(([n, t]) => `<div class="panel"><b>${esc(n)}</b><small class="muted">${t.dur} min · ${esc(t.room)}</small><p>${esc(t.desc)}</p></div>`).join('')}</div>
+  ${ct.dir || tel || wa || insta ? `<h2 class="section-t desc">Contacto</h2><div class="panel info-contact">
+    ${ct.dir ? `<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(ct.dir)}" target="_blank" rel="noopener">${esc(ct.dir)}</a>` : ''}
+    ${tel ? `<a href="tel:${tel}">Llamar: ${esc(ct.tel)}</a>` : ''}${wa ? `<a href="https://wa.me/${wa.length === 9 ? '34' + wa : wa}" target="_blank" rel="noopener">WhatsApp</a>` : ''}
+    ${insta ? `<a href="https://instagram.com/${encodeURIComponent(insta)}" target="_blank" rel="noopener">Instagram @${esc(insta)}</a>` : ''}</div>` : ''}
+  <div class="actions" style="justify-content:center;margin:26px 0 8px"><a class="btn accent" href="${appUrl()}#registro">Crear cuenta y reservar</a></div>
+  </div>`;
+}
+// Pegatina para imprimir: QR grande que abre la página pública.
+function stickerHTML(){
+  const syms = [...document.querySelectorAll('svg symbol')].map(x => x.outerHTML).join('');
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Pegatina ${esc(S.cfg.name)}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+  <style>@page{size:A5;margin:0}*{box-sizing:border-box}body{margin:0;font-family:Poppins,system-ui,sans-serif;background:#fff;color:#3E4C38}
+  .st{width:148mm;height:210mm;margin:0 auto;padding:16mm 14mm;display:flex;flex-direction:column;align-items:center;justify-content:space-between;text-align:center;background:#F1ECE2;border-radius:6mm}
+  .logo{height:16mm;width:auto;color:#3E4C38}h1{font-size:9mm;line-height:1.15;margin:0;font-weight:600}p{margin:0;font-size:4.6mm;color:#66705E}
+  .qr{width:92mm;height:92mm;padding:4mm;background:#fff;border-radius:4mm}.qr svg{width:100%;height:100%;display:block}.url{font-size:3.4mm;color:#66705E;word-break:break-all}
+  .bar{width:30mm;height:1.6mm;background:#B5714F;border-radius:1mm}@media screen{body{padding:20px;background:#ddd}}</style></head><body>
+  <svg width="0" height="0" style="position:absolute">${syms}</svg>
+  <div class="st"><svg class="logo" viewBox="0 0 10 13.5"><use href="#alento-iso"/></svg>
+  <div><h1>Escanéame</h1><p style="margin-top:2mm">Horarios, tarifas y reserva tu ${S.cfg.trial ? `primera ${SEC.unit} gratis` : SEC.unit}</p></div>
+  <div class="qr">${qrSvg(infoUrl())}</div><div class="bar"></div><div class="url">${esc(infoUrl().replace(/^https?:\/\//, ''))}</div></div>
+  <script>document.fonts.ready.then(() => setTimeout(() => print(), 300));<\/script></body></html>`;
+}
+function printSticker(){
+  const w = window.open('', '_blank');
+  if (!w) return toast('Permite las ventanas emergentes para imprimir la pegatina.');
+  w.document.open(); w.document.write(stickerHTML()); w.document.close();
+}
+
 const VIEWS = { horario:[viewHorario,afterHorario], reservas:[viewReservas,afterReservas], pagos:[viewPagos,afterPagos], tienda:[viewTienda,afterTienda], mensajes:[viewMensajes,afterMensajes], clientes:[viewClientes,afterClientes], perfil:[viewPerfil,afterPerfil], entrar:[viewEntrar,afterEntrar], ajustes:[viewAjustes,afterAjustes], fichajes:[viewFichajes,afterFichajes], equipo:[viewEquipo,afterEquipo], acceso:[viewAcceso,afterAcceso] };
 function render(){
   if (S.tab !== 'acceso') stopScan();
   if (LIVE && L.loading){ renderHeader(); $('#view').innerHTML = `<div class="empty" style="margin-top:12vh">${ISO()}<p>Cargando…</p></div>`; return; }
   renderHeader();
+  if (INFO){ document.querySelector('nav.tabs').hidden = document.querySelector('.bottom-nav').hidden = true; ['#bellBtn','#creditPill','#meBtn','#qrBtn'].forEach(id => $(id).hidden = true); $('#view').innerHTML = viewInfo(); return; }
   if (isGuest()) S.tab = 'entrar';
   else if (!tabsFor().includes(S.tab)) S.tab = isAdmin() ? 'clientes' : isStaff() ? 'fichajes' : 'horario';
   renderHeader();
@@ -4968,6 +5066,7 @@ function render(){
 }
 const hash = location.hash.slice(1);
 if (VIEWS[hash]) S.tab = hash;
+if (hash === 'registro') accesoMode = 'registro';
 if (LIVE) startLive(); else render();
 })();
 </script>
