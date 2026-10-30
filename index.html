@@ -91,6 +91,7 @@ main{padding-block:24px 64px}
 .day .dot{display:block;width:5px;height:5px;border-radius:50%;margin:4px auto 0;background:var(--accent)}
 .day .dot.off{visibility:hidden}
 .filters{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px}
+@media (max-width:560px){.filters{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin-inline:-16px;padding-inline:16px}.filters::-webkit-scrollbar{display:none}.filters .chip{flex:none;padding:6px 10px;font-size:12.5px}}
 .chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:5px 12px;font-size:13px}
 .chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .list{display:flex;flex-direction:column;gap:10px}
@@ -4330,7 +4331,7 @@ function viewClientes(){
   const pend = ids.filter(k => missing(S.clients[k]).length).length;
   return `<div class="view-head"><div><h1>Clientes</h1><p class="muted">${ids.length} clientes activos${pend ? ` · ${pend} con documentación pendiente` : ''}</p></div><button class="btn" id="c_new">Nuevo cliente</button></div>
     <div class="toolbar"><input id="c_q" type="search" placeholder="Buscar por nombre, DNI, email o teléfono" value="${esc(cliQ)}" aria-label="Buscar clientes">
-      <div class="filters" style="margin:0" role="group" aria-label="Filtro">${[['todos','Todos'],['pend','Documentación pendiente'],['salud','Con datos de salud']].map(([k,t]) => `<button class="chip" data-cf="${k}" aria-pressed="${cliF === k}">${t}</button>`).join('')}</div></div>
+      <div class="filters" style="margin:0" role="group" aria-label="Filtro">${[['todos','Todos'],['pend','Falta documentación'],['salud','Datos de salud']].map(([k,t]) => `<button class="chip" data-cf="${k}" aria-pressed="${cliF === k}">${t}</button>`).join('')}</div></div>
     ${list.length ? `<div class="table-wrap"><table class="clients"><thead><tr><th>Cliente</th><th>Contacto</th><th>Alta</th><th class="r">Bono</th><th>Documentación</th></tr></thead><tbody>
       ${list.map(k => { const c = S.clients[k], m = missing(c); return `<tr data-cli="${k}" tabindex="0"><td><span style="display:flex;gap:10px;align-items:center">${avatar(c)}<span><b style="font-weight:500">${esc(c.nombre)} ${esc(c.apellidos)}</b>${hasHealth(c) ? ' <span class="tagreq req" title="Tiene datos de salud">Salud</span>' : ''}<br><small class="muted">${esc(c.dni)}</small></span></span></td><td>${esc(c.email)}<br><small class="muted">${esc(c.tel)}</small></td><td class="num muted">${fmtDate(c.alta)}</td><td class="r num">${S.credits[k] || 0}</td><td>${m.length ? `<span class="status wait">${m.length} ${m.length === 1 ? 'pendiente' : 'pendientes'}</span>` : '<span class="status ok">Completa</span>'}</td></tr>`; }).join('')}
     </tbody></table></div>` : `<div class="empty">${ISO()}<p>No hay clientes que coincidan.</p></div>`}`;
@@ -5071,6 +5072,6 @@ if (LIVE) startLive(); else render();
 })();
 </script>
 
-<script>if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));</script>
+<script>if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('sw.js', { updateViaCache:'none' }).catch(() => {}));</script>
 </body>
 </html>
