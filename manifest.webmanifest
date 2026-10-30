@@ -1,0 +1,17 @@
+{
+  "name": "Alento Reservas",
+  "short_name": "Alento",
+  "description": "Reserva tus clases de pilates, gestiona tu bono y habla con el centro.",
+  "lang": "es",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F1ECE2",
+  "theme_color": "#3E4C38",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
