@@ -32,6 +32,11 @@ Cuando cambie `supabase.sql`, vuelve a pegarlo entero en el SQL Editor y pulsa R
 
 - Fichajes (registro de jornada): `clock_events`, nunca se borran; las correcciones de recepción son fichajes manuales con motivo. Recepción da acceso en Ajustes → Equipo (`admin_set_staff`) y el monitor crea su cuenta con «Crea tu acceso para fichar» (role `staff`). La ubicación solo se toma al fichar.
 
+### Equipo: ficha del trabajador y documentos
+- `profiles.worker` (jsonb) guarda datos personales y laborales. `save_worker(uid,data)`: recepción edita todo; el trabajador solo sus datos personales (puesto, contrato, alta, jornada y notas se conservan).
+- Documentos en Storage, bucket privado `equipo` (10 MB por archivo), ruta `centro/perfil/carpeta/fecha-nombre`, carpetas `contratos`, `nominas`, `personal`.
+- Políticas con `equipo_access(name, write)`: admin todo en su centro; el trabajador lee lo suyo y solo sube/borra en `personal`.
+
 ## Pendiente
 
 - Archivos adjuntos: de momento se guarda solo el nombre (falta Supabase Storage).

@@ -98,6 +98,7 @@ create table if not exists access_logs (
 
 -- Equipo: role 'staff' = monitor con acceso para fichar; staff_key = su nombre en el horario.
 alter table profiles add column if not exists staff_key text;
+alter table profiles add column if not exists worker jsonb not null default '{}';   -- ficha del trabajador (datos personales y laborales)
 alter table profiles drop constraint if exists profiles_role_check;
 alter table profiles add constraint profiles_role_check check (role in ('socio','admin','staff'));
 
@@ -249,12 +250,12 @@ begin
   adm := p.role = 'admin';
   return jsonb_build_object(
     'rev', (select coalesce((select r.rev from center_rev r where r.center_id = c.id), 0)),
-    'staff', case when adm then (select coalesce(jsonb_object_agg(x.id, jsonb_build_object('email', x.email, 'key', x.staff_key, 'role', x.role, 'cuenta', x.auth_id is not null,
+    'staff', case when adm then (select coalesce(jsonb_object_agg(x.id, jsonb_build_object('email', x.email, 'key', x.staff_key, 'role', x.role, 'cuenta', x.auth_id is not null, 'worker', x.worker,
                  'name', trim(coalesce(x.ficha->>'nombre', '') || ' ' || coalesce(x.ficha->>'apellidos', '')))), '{}'::jsonb)
                  from profiles x where x.center_id = c.id and (x.role = 'staff' or x.staff_key is not null)) end,
     'clock', (select coalesce(jsonb_agg(jsonb_build_object('id', e.id, 'uid', e.profile_id, 'kind', e.kind, 'at', ms(e.at), 'manual', e.manual) order by e.at, e.id), '[]'::jsonb)
               from clock_events e where e.profile_id = p.id and e.at > now() - interval '36 hours'),
-    'profile', jsonb_build_object('id', p.id, 'role', p.role, 'staff_key', p.staff_key, 'email', p.email, 'credits', p.credits, 'wallet', p.wallet, 'subs', p.subs, 'ficha', lite_ficha(p.ficha)),
+    'profile', jsonb_build_object('id', p.id, 'role', p.role, 'staff_key', p.staff_key, 'worker', case when adm then p.worker else p.worker - 'notas' end, 'email', p.email, 'credits', p.credits, 'wallet', p.wallet, 'subs', p.subs, 'ficha', lite_ficha(p.ficha)),
     'center', jsonb_build_object('id', c.id, 'name', c.name, 'week', c.week, 'test_payments', c.test_payments,
       'cfg', case when adm then c.cfg else (c.cfg - 'codes') || jsonb_build_object('has_codes', jsonb_typeof(c.cfg->'codes') = 'array' and jsonb_array_length(c.cfg->'codes') > 0) end),
     'sold', (select coalesce(jsonb_object_agg(s.plan_id, s.n), '{}'::jsonb) from (
@@ -651,6 +652,51 @@ begin
   return pid;
 end $$;
 
+-- ---------- ficha y documentos del equipo ----------
+-- Recepción edita todo; cada trabajador solo sus datos personales (no puesto, contrato, alta, jornada ni notas internas).
+create or replace function save_worker(p_uid uuid, p_data jsonb) returns void
+language plpgsql security definer set search_path = public as $$
+declare me profiles;
+begin
+  me := me_profile();
+  if me.id is null then raise exception 'NO_SESSION'; end if;
+  if me.role = 'admin' then
+    if not exists (select 1 from profiles where id = p_uid and center_id = me.center_id and (role = 'staff' or staff_key is not null)) then raise exception 'NOT_FOUND'; end if;
+    update profiles set worker = p_data where id = p_uid;
+  elsif me.role = 'staff' and me.id = p_uid then
+    update profiles set worker = (p_data - array['puesto','contrato','alta','jornada','notas'])
+      || jsonb_strip_nulls(jsonb_build_object('puesto', worker->'puesto', 'contrato', worker->'contrato', 'alta', worker->'alta', 'jornada', worker->'jornada', 'notas', worker->'notas'))
+     where id = me.id;
+  else raise exception 'FORBIDDEN'; end if;
+end $$;
+
+-- Archivos del equipo en Supabase Storage (carpeta privada «equipo»): centro/trabajador/carpeta/archivo.
+-- Recepción puede todo en su centro; cada trabajador solo ve lo suyo y solo sube o borra en «personal».
+create or replace function equipo_access(p_name text, p_write boolean) returns boolean
+language plpgsql stable security definer set search_path = public as $$
+declare me profiles; parts text[] := string_to_array(p_name, '/'); target uuid;
+begin
+  me := me_profile();
+  if me.id is null or coalesce(array_length(parts, 1), 0) < 4 or parts[1] <> me.center_id then return false; end if;
+  if parts[3] not in ('contratos', 'nominas', 'personal') then return false; end if;
+  begin target := parts[2]::uuid; exception when others then return false; end;
+  if not exists (select 1 from profiles where id = target and center_id = me.center_id and (role = 'staff' or staff_key is not null)) then return false; end if;
+  if me.role = 'admin' then return true; end if;
+  return target = me.id and (not p_write or parts[3] = 'personal');
+end $$;
+
+do $$ begin
+  if exists (select 1 from information_schema.schemata where schema_name = 'storage') then
+    execute $q$insert into storage.buckets (id, name, public, file_size_limit) values ('equipo', 'equipo', false, 10485760) on conflict (id) do nothing$q$;
+    execute 'drop policy if exists "equipo leer" on storage.objects';
+    execute 'drop policy if exists "equipo subir" on storage.objects';
+    execute 'drop policy if exists "equipo borrar" on storage.objects';
+    execute $q$create policy "equipo leer" on storage.objects for select to authenticated using (bucket_id = 'equipo' and public.equipo_access(name, false))$q$;
+    execute $q$create policy "equipo subir" on storage.objects for insert to authenticated with check (bucket_id = 'equipo' and public.equipo_access(name, true))$q$;
+    execute $q$create policy "equipo borrar" on storage.objects for delete to authenticated using (bucket_id = 'equipo' and public.equipo_access(name, true))$q$;
+  end if;
+end $$;
+
 -- Solo las funciones públicas de la app se pueden llamar desde fuera.
 do $$ declare f text; begin
   foreach f in array array['me_profile()','ensure_classes(text)','notify_user(text,uuid,text)','promote(uuid)','require_admin()','handle_new_user()',
@@ -659,7 +705,8 @@ do $$ declare f text; begin
   end loop;
   foreach f in array array['hydrate()','book_class(uuid)','cancel_booking(uuid)','buy_plan(text,text,text)','check_code(text)','my_rev()','client_media(uuid[])','push(jsonb)',
                            'admin_create_client(jsonb)','admin_add_credits(uuid,int,numeric,text,text)','admin_baja(uuid)','save_config(text,jsonb,jsonb)',
-                           'clock(text,double precision,double precision,real)','clock_month(text,uuid)','admin_clock_add(uuid,text,timestamptz,text)','admin_set_staff(text,text)'] loop
+                           'clock(text,double precision,double precision,real)','clock_month(text,uuid)','admin_clock_add(uuid,text,timestamptz,text)','admin_set_staff(text,text)',
+                           'save_worker(uuid,jsonb)','equipo_access(text,boolean)'] loop
     execute format('revoke execute on function %s from public, anon', f);
     execute format('grant execute on function %s to authenticated', f);
   end loop;
