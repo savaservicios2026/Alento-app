@@ -4596,11 +4596,13 @@ function monthEvents(){
 // Vista de todo el equipo: una columna por trabajador y una fila por día, para ver a todos a la vez.
 function clockBoard(days, people){
   const has = new Set(days.map(w => w.uid));
-  const cols = people.filter(u => u !== selfId() || has.has(u)).concat([...has].filter(u => !people.includes(u)));
-  if (!cols.length) return `<div class="empty">${ISO()}<p>Todavía no hay nadie del equipo con acceso para fichar. Dalo en la pestaña Equipo.</p></div>`;
+  // Todo el equipo de Ajustes, tenga ya acceso o no; los que no lo tienen salen con un aviso para darlo en Equipo.
+  const team = Object.keys(INSTR).map(k => { const a = staffAccess(k); return a ? a.id : 'k:' + k; });
+  const cols = team.concat(people.filter(u => !team.includes(u) && (u !== selfId() || has.has(u))), [...has].filter(u => !team.includes(u) && !people.includes(u)));
+  if (!cols.length) return `<div class="empty">${ISO()}<p>Añade a tu equipo en Ajustes → Equipo.</p></div>`;
   const by = {}; days.forEach(w => ((by[w.day] = by[w.day] || {})[w.uid] = (by[w.day][w.uid] || [])).push(w));
   const total = u => days.filter(w => w.uid === u).reduce((a, w) => a + w.worked, 0);
-  const now = u => { const w = days.find(x => x.uid === u && x.live); return w ? (w.state === 'pause' ? ['wait', 'En pausa'] : ['ok', 'Trabajando']) : ['', 'Fuera']; };
+  const now = u => { if (u.startsWith('k:')) return ['', 'Sin acceso para fichar']; const w = days.find(x => x.uid === u && x.live); return w ? (w.state === 'pause' ? ['wait', 'En pausa'] : ['ok', 'Trabajando']) : ['', 'Fuera']; };
   const short = ms => `${Math.floor(ms / 36e5)}h${pad(Math.floor(ms % 36e5 / 6e4))}`;
   const cell = ws => {
     if (!ws) return '<td class="cb-empty">·</td>';
@@ -4610,9 +4612,9 @@ function clockBoard(days, people){
     return `<td><div class="num">${f.start ? hm(f.start.at) : '—'}</div><div class="num">${end}</div><b class="num">${short(ws.reduce((t, w) => t + w.worked, 0))}${fix ? '<span title="Corregido a mano">*</span>' : ''}</b></td>`;
   };
   const rows = Object.keys(by).sort().reverse();
-  return `<div class="table-wrap"><table class="clock-board" style="--n:${cols.length}"><thead><tr><th></th>${cols.map(u => { const [c, t] = now(u); return `<th><button class="cb-who" data-who="${u}" title="Ver detalle"><span class="cb-dot ${c}" title="${t}"></span>${esc(clkName(u).split(' ')[0])}</button><small class="num">${short(total(u))}</small></th>`; }).join('')}</tr></thead>
+  return `<div class="table-wrap"><table class="clock-board" style="--n:${cols.length}"><thead><tr><th></th>${cols.map(u => { const [c, t] = now(u); return `<th><button class="cb-who" data-who="${u}" title="${u.startsWith('k:') ? 'Dar acceso en Equipo' : 'Ver detalle'}"><span class="cb-dot ${c}" title="${t}"></span>${esc((u.startsWith('k:') ? INSTR[u.slice(2)].name : clkName(u)).split(' ')[0])}</button><small class="num">${u.startsWith('k:') ? 'sin acceso' : short(total(u))}</small></th>`; }).join('')}</tr></thead>
   <tbody>${rows.length ? rows.map(d => `<tr><th class="num">${fmtDay(d, { weekday:'short', day:'numeric' })}</th>${cols.map(u => cell(by[d][u])).join('')}</tr>`).join('') : `<tr><td colspan="${cols.length + 1}" class="muted">No hay fichajes este mes.</td></tr>`}</tbody></table></div>
-  <p class="muted" style="font-size:12px">Cada casilla: entrada, salida y horas trabajadas. Pulsa un nombre para ver su detalle con pausas y ubicación. * corregido a mano.</p>`;
+  <p class="muted" style="font-size:12px">Cada casilla: entrada, salida y horas trabajadas. Pulsa un nombre para ver su detalle con pausas y ubicación. * corregido a mano.${cols.some(u => u.startsWith('k:')) ? ' Quien pone «sin acceso» aún no puede fichar: pulsa su nombre y dale acceso con su email.' : ''}</p>`;
 }
 function viewFichajes(){
   const own = (S.clock || []).filter(e => e.uid === selfId()).sort((a, b) => a.at - b.at);
@@ -4661,7 +4663,7 @@ function afterFichajes(root){
   });
   const mo = root.querySelector('#ck_month'); mo.onchange = () => { if (!mo.value) return; CLK.month = mo.value; CLK.data = null; render(); };
   const us = root.querySelector('#ck_uid'); if (us) us.onchange = () => { CLK.uid = us.value; CLK.data = null; render(); };
-  root.querySelectorAll('[data-who]').forEach(b => b.onclick = () => { CLK.uid = b.dataset.who; CLK.data = null; render(); });
+  root.querySelectorAll('[data-who]').forEach(b => b.onclick = () => { if (b.dataset.who.startsWith('k:')){ EQ.key = b.dataset.who.slice(2); return setTab('equipo'); } CLK.uid = b.dataset.who; CLK.data = null; render(); });
   root.querySelector('#ck_csv').onclick = () => {
     const ev = monthEvents().slice().sort((a, b) => a.at - b.at);
     if (!ev.length) return toast('No hay fichajes este mes.');
