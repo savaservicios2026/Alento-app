@@ -158,6 +158,20 @@ main{padding-block:24px 64px}
 .plan .per{font-size:12.5px;color:var(--ink-2)}
 .plan .btn{margin-top:auto}
 .plan ul{margin:6px 0 12px;padding-left:18px;font-size:13px;color:var(--ink-2)}
+.plan .was{font-size:15px;color:var(--ink-2);font-weight:400}.plan .left{color:var(--accent);font-weight:500}
+.promo{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 16px}.promo input{flex:1 1 200px;min-width:0;max-width:320px;text-transform:uppercase}
+.alert.opening{margin:0 0 14px}
+.aj-sec{margin-top:26px;padding-top:18px;border-top:1px solid var(--line)}.aj-sec > p.muted{font-size:13px;margin:4px 0 0}
+.aj-card{border:1px solid var(--line);border-radius:12px;padding:4px 14px 14px;margin-top:12px;background:var(--bg)}
+.aj-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:0 12px}.aj-grid .wide{grid-column:1/-1}
+.aj-grid input,.aj-grid select{min-width:0;width:100%;box-sizing:border-box}
+.aj-row{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-top:10px}
+.aj-checks{display:flex;gap:16px;flex-wrap:wrap;margin-top:12px;font-size:13px}.aj-checks label{display:flex;gap:6px;align-items:center}
+.aj-staff{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.aj-staff .chip{display:inline-flex;gap:6px;align-items:center}.aj-staff .chip button{border:0;background:none;padding:0 2px;font-size:15px;line-height:1;color:var(--ink-2)}
+.aj-days{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}.aj-days [aria-pressed="true"] small{color:inherit;opacity:.75}
+.aj-class{display:grid;grid-template-columns:minmax(0,120px) minmax(0,1.3fr) minmax(0,1.2fr) minmax(0,1fr) minmax(0,70px) auto;gap:8px;align-items:end;margin-top:8px}
+.aj-class input,.aj-class select{min-width:0;width:100%;box-sizing:border-box}.aj-class .field{margin-top:0}
+@media (max-width:640px){.aj-class{grid-template-columns:minmax(0,1fr) minmax(0,1fr);padding:10px 0;border-bottom:1px solid var(--line)}.aj-class > button{grid-column:1/-1;justify-self:start}}
 .table-wrap{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:var(--r)}
 table{width:100%;border-collapse:collapse;font-size:14px;min-width:520px}
 th,td{text-align:left;padding:12px 16px;border-bottom:1px solid var(--line)}
@@ -2862,7 +2876,8 @@ function weekFrom(times, satTimes, combos){
   w[6] = satTimes.map((t,j) => [t, ...combos[j % combos.length]]);
   return w;
 }
-const staff = list => Object.fromEntries(list.map(n => [n.toLowerCase().split(' ')[0].normalize('NFD').replace(/[^a-z]/g,''), { name:n, ini:n.split(' ').map(w => w[0]).join('').slice(0,2) }]));
+const staffKey = n => n.toLowerCase().split(' ')[0].normalize('NFD').replace(/[^a-z]/g,'') || 'x';
+const staff = list => { const o = {}; list.forEach(n => { let k = staffKey(n), i = 2; while (o[k]) k = staffKey(n) + i++; o[k] = { name:n, ini:n.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase() }; }); return o; };
 const types = list => Object.fromEntries(list.map(([name, room, dur, desc, cap], i) => [name, { cls:CLS[i % CLS.length], room, dur, desc, ...(cap ? { cap } : {}) }]));
 const SECTORS = {
   pilates:{ label:'Pilates', noun:'pilates', unit:'clase', units:'clases', staffLabel:'Instructor', cap:8, wait:2, cancel:12,
@@ -2892,23 +2907,31 @@ const SECTORS = {
     staff:staff(['Hugo Vázquez','Paula Lago']),
     week:weekFrom(['07:00','08:00','09:00','12:00','17:00','18:00','19:00','20:00'],['09:00','10:00'],[['Sesión individual','hugo','Todos'],['Sesión individual','paula','Todos'],['Entreno en pareja','hugo','Todos'],['Grupo reducido','paula','Todos'],['Valoración inicial','hugo','Todos'],['Sesión individual','paula','Todos']]) }
 };
-let SEC, TYPES, INSTR, WEEK;
+let SEC, TYPES, INSTR, WEEK, OPEN = '';
 function applySector(cfg){
   SEC = SECTORS[cfg.sector] || SECTORS.pilates;
-  TYPES = SEC.types; INSTR = SEC.staff; WEEK = SEC.week;
+  TYPES = { ...SEC.types }; INSTR = { ...SEC.staff }; WEEK = SEC.week;
+  // Ajustes del centro: equipo, horario semanal y fecha de apertura propios
+  if (Array.isArray(cfg.staff) && cfg.staff.length) INSTR = staff(cfg.staff);
+  if (cfg.week && Object.keys(cfg.week).length) WEEK = cfg.week;
+  OPEN = cfg.open || '';
   CAP = cfg.cap; WAIT_MAX = cfg.wait; CANCEL_H = cfg.cancel;
 }
 const defaultCfg = (sector='pilates', name='Alento') => ({ sector, name, cap:SECTORS[sector].cap, wait:SECTORS[sector].wait, cancel:SECTORS[sector].cancel });
 applySector(defaultCfg());
 const U = n => n === 1 ? SEC.unit : SEC.units;
 const capOf = c => c.cap || (TYPES[c.type] && TYPES[c.type].cap) || CAP;
-const PLANS = [
+// Bonos de ejemplo. Recepción los cambia en Ajustes (cfg.plans); until = solo hasta esa fecha, limit = número máximo de ventas.
+const DEFAULT_PLANS = [
   { id:'p1',  name:'Clase suelta', classes:1,  price:16,  weeks:4,  perks:['Válida 4 semanas'] },
   { id:'p4',  name:'Bono 4',       classes:4,  price:54,  weeks:6,  perks:['13,50 € por clase','Válido 6 semanas'] },
   { id:'p8',  name:'Bono 8',       classes:8,  price:98,  weeks:8,  perks:['12,25 € por clase','Válido 8 semanas','Prioridad en lista de espera'], pop:true },
   { id:'p12', name:'Bono 12',      classes:12, price:132, weeks:10, perks:['11 € por clase','Válido 10 semanas','Prioridad en lista de espera'] },
   { id:'m8',  name:'Cuota mensual', classes:8,  price:89,  recurring:true, perks:['11,13 € por clase','Se renueva sola el día 1','Cancela cuando quieras'] }
 ];
+const plans = () => Array.isArray(S.cfg.plans) ? S.cfg.plans : DEFAULT_PLANS;
+const planOpen = p => p.on !== false && !(p.until && p.until < ymd(new Date()));
+const perksOf = p => p.perks && p.perks.length ? p.perks : (p.classes > 1 ? [`${(p.price / p.classes).toLocaleString('es-ES', { maximumFractionDigits:2 })} € por clase`] : []);
 const PRODUCTS = [
   { id:'tee',   name:'Camiseta Alento',      price:24, sizes:['XS','S','M','L','XL'], piece:'tee',    note:'Logotipo al centro del pecho' },
   { id:'socks', name:'Calcetines grip',       price:12, sizes:['35-38','39-42','43-46'], piece:'socks', note:'Antideslizantes, obligatorios en reformer' },
@@ -2932,11 +2955,12 @@ let filler = 0;
 const fill = n => Array.from({length:n}, () => 'x' + (++filler));
 function genClasses(){
   const today = new Date(); today.setHours(0,0,0,0);
+  const open = OPEN ? new Date(OPEN + 'T00:00:00') : today, start = open > today ? open : today;
   const classes = [];
   for (let i = 0; i < DAYS_AHEAD; i++){
-    const d = new Date(today); d.setDate(d.getDate() + i);
-    (WEEK[d.getDay()] || []).forEach(([time,type,instr,level], j) => {
-      const cap = (TYPES[type] && TYPES[type].cap) || CAP;
+    const d = new Date(start); d.setDate(d.getDate() + i);
+    (WEEK[d.getDay()] || []).forEach(([time,type,instr,level,rcap], j) => {
+      const cap = rcap || (TYPES[type] && TYPES[type].cap) || CAP;
       const n = Math.min(cap, Math.round([3,8,5,7,8,2,6,4,8,1,5][(i*3 + j*5) % 11] * cap / 8));
       const c = { id:`${ymd(d)}-${time}-${j}`, date:ymd(d), time, type, instr, level, cap, booked:fill(n), wait:[] };
       if (n === cap) c.wait = fill(Math.min(WAIT_MAX, (i + j) % 3));
@@ -3001,7 +3025,8 @@ const appUrl = () => location.origin + location.pathname;
 const ERRS = {
   NO_CREDITS:'No te quedan clases en el bono.', FULL:'Completo y con la lista de espera llena.', STARTED:'Esta clase ya ha empezado.',
   ALREADY:'Ya estás apuntada a esta clase.', FORBIDDEN:'No tienes permiso para hacer esto.', NO_SESSION:'Tu sesión ha caducado. Vuelve a entrar.',
-  PAYMENTS_OFF:'Los pagos desde la app todavía no están activos. Paga en recepción.', NOT_FOUND:'No se ha encontrado. Recarga la app.'
+  PAYMENTS_OFF:'Los pagos desde la app todavía no están activos. Paga en recepción.', NOT_FOUND:'No se ha encontrado. Recarga la app.',
+  BAD_CODE:'Ese código no existe o ya ha caducado.', SOLD_OUT:'Este bono se ha agotado.', PLAN_ENDED:'Este bono ya no está a la venta.'
 };
 const errText = e => { const m = (e && e.message) || ''; const k = Object.keys(ERRS).find(x => m.includes(x)); return k ? ERRS[k] : 'No se ha podido conectar con el servidor. Revisa la conexión e inténtalo de nuevo.'; };
 function authErr(e){
@@ -3030,15 +3055,18 @@ function normFicha(f){
   return c;
 }
 const cleanFicha = f => Object.fromEntries(Object.entries(f).filter(([k]) => k[0] !== '_'));
-const cfgPayload = () => ({ sector:S.cfg.sector, cap:CAP, wait:WAIT_MAX, cancel:CANCEL_H, unit:SEC.unit });
-const weekPayload = () => Object.fromEntries(Object.entries(WEEK).map(([d, list]) => [d, list.map(([t, type, instr, level]) => [t, type, instr, level, (TYPES[type] && TYPES[type].cap) || CAP])]));
+const cfgPayload = () => ({ sector:S.cfg.sector, cap:CAP, wait:WAIT_MAX, cancel:CANCEL_H, unit:SEC.unit,
+  staff:S.cfg.staff, plans:S.cfg.plans, codes:S.cfg.codes, trial:S.cfg.trial || 0, open:S.cfg.open || '' });
+const weekPayload = () => Object.fromEntries(Object.entries(WEEK).map(([d, list]) => [d, list.map(([t, type, instr, level, cap]) => [t, type, instr, level, cap || (TYPES[type] && TYPES[type].cap) || CAP])]));
 const isTyping = () => { const a = document.activeElement; return !!a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && !!a.value; };
 
 function applyHydrate(h){
   const p = h.profile, adm = p.role === 'admin';
   L.pid = p.id; L.email = (p.email || '').toLowerCase();
   S.cfg = { ...defaultCfg(), ...(h.center.cfg || {}), name:h.center.name };
+  if (h.center.week && Object.keys(h.center.week).length) S.cfg.week = h.center.week;
   if (EDITION === 'alento' || !SECTORS[S.cfg.sector]) S.cfg.sector = 'pilates';
+  L.sold = h.sold || {};
   applySector(S.cfg);
   S.user = adm ? ADMIN : p.id;
   S.clients = {}; S.credits = {}; S.subs = {}; S.wallet = {};
@@ -3135,7 +3163,7 @@ function applyPendingSignup(){
   const prev = S.clients[L.pid] || {};
   S.clients[L.pid] = normFicha({ ...pend.ficha, alta:prev.alta || Date.now(), origen:'App' });
   syncNames(S.clients);
-  notify(L.pid, `Te damos la bienvenida a ${S.cfg.name}. Compra tu primer bono en Pagos y reserva tu ${SEC.unit} desde Horario.`);
+  notify(L.pid, `Te damos la bienvenida a ${S.cfg.name}. ${S.credits[L.pid] ? `Reserva tu primera ${SEC.unit} desde Horario.` : `Compra tu primer bono en Pagos y reserva tu ${SEC.unit} desde Horario.`}`);
   notify(ADMIN, `Nuevo cliente: ${SOCIOS[L.pid]} se ha registrado desde la app con la documentación firmada.`);
   try { localStorage.removeItem(PEND); } catch(e){}
   save();
@@ -3229,7 +3257,7 @@ async function startLive(){
 
 // Recepción suma clases cuando el cliente paga en el mostrador (también en la demo).
 function creditsModal(uid){
-  const opts = PLANS.filter(p => !p.recurring);
+  const opts = plans().filter(p => !p.recurring && p.on !== false);
   modal(`<h2>Añadir ${SEC.units} a ${esc(SOCIOS[uid])}</h2><p class="muted">Para cuando el cliente paga en recepción.</p>
     <label class="field">Bono<select id="k_plan">${opts.map(p => `<option value="${p.id}">${p.name} · ${p.classes} ${U(p.classes)} · ${eur(p.price)}</option>`).join('')}<option value="free">${cap1(SEC.units)} de cortesía, sin cobro</option></select></label>
     <label class="field" id="k_nwrap" hidden>Número de ${SEC.units}<input id="k_n" type="number" min="1" max="50" value="1" inputmode="numeric"></label>
@@ -3239,7 +3267,7 @@ function creditsModal(uid){
     const plan = m.querySelector('#k_plan');
     plan.onchange = () => { m.querySelector('#k_nwrap').hidden = plan.value !== 'free'; m.querySelector('#k_mwrap').hidden = plan.value === 'free'; };
     m.querySelector('#k_ok').onclick = () => {
-      const p = PLANS.find(x => x.id === plan.value), n = p ? p.classes : parseInt(m.querySelector('#k_n').value, 10);
+      const p = opts.find(x => x.id === plan.value), n = p ? p.classes : parseInt(m.querySelector('#k_n').value, 10);
       const amount = p ? p.price : 0, method = p ? m.querySelector('#k_m').value : 'Cortesía', concept = p ? `${p.name} (recepción)` : `${cap1(SEC.units)} de cortesía`;
       if (!(n >= 1 && n <= 50)) return m.querySelector('#k_err').textContent = 'Indica un número entre 1 y 50.';
       closeLayer();
@@ -3476,7 +3504,8 @@ function viewHorario(){
       <div class="actions"><button class="btn sm" id="heroQR">Mi código de acceso</button>${nextC ? '<button class="btn ghost sm" id="heroRes">Mis reservas</button>' : ''}<button class="btn ghost sm" id="heroPay">${n ? 'Recargar bono' : 'Comprar bono'}</button></div>
       <svg class="mark" viewBox="0 0 10 13.5" aria-hidden="true"><use href="#alento-iso"/></svg>
     </section>`;
-  return `${hero}<div class="view-head"><div><h1>Horario de ${SEC.units}</h1><p class="muted">${cap1(fmtDay(S.day))}</p></div></div>
+  const soon = OPEN && OPEN > ymd(new Date()) ? `<div class="alert opening"><b>Abrimos el ${fmtDay(OPEN, { day:'numeric', month:'long' })}.</b> Ya puedes reservar tus primeras ${SEC.units}.</div>` : '';
+  return `${hero}${soon}<div class="view-head"><div><h1>Horario de ${SEC.units}</h1><p class="muted">${cap1(fmtDay(S.day))}</p></div></div>
   <div class="layout">
     <section style="min-width:0">
       <div class="days" role="group" aria-label="Elegir día">${days.map(d => {
@@ -3603,19 +3632,29 @@ function checkout({ title, lines, total, onPaid, allowDesk, recurring }){
   });
 }
 
+let PROMO = {};
+const planSold = id => LIVE ? ((L.sold || {})[id] || 0) : S.payments.filter(y => y.planId === id).length;
+const codePct = code => { const c = (S.cfg.codes || []).find(x => x.code === code && x.on !== false && !(x.until && x.until < ymd(new Date()))); return c ? c.pct : null; };
 function viewPagos(){
   const mine = S.payments.filter(p => p.uid === me()).sort((a,b) => b.ts - a.ts);
   const n = S.credits[me()] || 0, w = walletOf(me()), sub = S.subs[me()];
-  const subPlan = sub && PLANS.find(p => p.id === sub.plan);
+  const subPlan = sub && (plans().find(p => p.id === sub.plan) || DEFAULT_PLANS.find(p => p.id === sub.plan) || { name:'Cuota mensual', price:0 });
+  const shown = plans().filter(planOpen).sort((a, b) => !!(b.until || b.limit) - !!(a.until || a.limit)), today = ymd(new Date());
+  const codesOn = isAdmin() || !LIVE ? (S.cfg.codes || []).some(c => c.on !== false && !(c.until && c.until < today)) : !!S.cfg.has_codes;
+  const price = p => PROMO.pct ? Math.round(p.price * (100 - PROMO.pct)) / 100 : p.price;
   return `<div class="view-head"><div><h1>Pagos</h1><p class="muted">Te ${n === 1 ? 'queda' : 'quedan'} <b class="num">${n}</b> ${U(n)} en tu bono.</p></div></div>
   ${sub ? `<div class="panel subcard"><div style="min-width:0"><div class="desc muted">Tu cuota mensual</div><h2>${subPlan.name} · ${eur(subPlan.price)}/mes</h2>
     <p class="muted" style="margin:2px 0 0;font-size:13.5px">${sub.cancelled ? `Cancelada. Sigue activa hasta el ${fmtDate(sub.next)}.` : `Próximo cargo el ${fmtDate(sub.next)} · ${esc(sub.method)}`}</p></div>
     ${sub.cancelled ? '<button class="btn sm" id="subResume">Reactivar</button>' : '<button class="btn ghost sm" id="subCancel">Cancelar renovación</button>'}</div>` : ''}
   <h2 class="section-t desc">Bonos y cuotas</h2>
-  <div class="plans">${PLANS.map(p => `<div class="plan ${p.pop ? 'pop' : ''}">${p.pop ? '<span class="tag desc">Más elegido</span>' : ''}
-    <div class="desc muted">${p.name}</div><div class="price num">${eur(p.price)}${p.recurring ? '<small class="per"> /mes</small>' : ''}</div><div class="per">${p.classes} ${U(p.classes)}${p.recurring ? ' cada mes' : ''}</div>
-    <ul>${p.perks.map(x => `<li>${x}</li>`).join('')}</ul>
-    <button class="btn ${p.pop ? 'accent' : ''}" data-plan="${p.id}" ${p.recurring && sub && !sub.cancelled ? 'disabled' : ''}>${p.recurring ? (sub && !sub.cancelled ? 'Ya la tienes' : 'Suscribirme') : 'Comprar'}</button></div>`).join('')}</div>
+  ${codesOn ? `<form class="promo" id="promoForm">${PROMO.pct ? `<span class="status ok">Código ${esc(PROMO.code)}: −${PROMO.pct} %</span><button type="button" class="linkbtn" id="promoOff">Quitar</button>`
+    : `<input id="promoIn" placeholder="¿Tienes un código promocional?" autocapitalize="characters" aria-label="Código promocional"><button class="btn ghost sm">Aplicar</button>`}</form>` : ''}
+  <div class="plans">${shown.map(p => { const left = p.limit ? p.limit - planSold(p.id) : null, out = left !== null && left <= 0, special = p.until || p.limit;
+    return `<div class="plan ${p.pop || special ? 'pop' : ''}">${special ? `<span class="tag desc">${esc(p.tag || 'Preventa')}</span>` : p.pop ? '<span class="tag desc">Más elegido</span>' : ''}
+    <div class="desc muted">${esc(p.name)}</div><div class="price num">${PROMO.pct ? `<s class="was">${eur(p.price)}</s> ` : ''}${eur(price(p))}${p.recurring ? '<small class="per"> /mes</small>' : ''}</div><div class="per">${p.classes} ${U(p.classes)}${p.recurring ? ' cada mes' : ''}</div>
+    ${special ? `<div class="per left">${[p.until ? `Hasta el ${fmtDay(p.until, { day:'numeric', month:'short' })}` : '', left !== null ? (out ? 'Agotado' : `Quedan ${left}`) : ''].filter(Boolean).join(' · ')}</div>` : ''}
+    <ul>${perksOf(p).map(x => `<li>${esc(x)}</li>`).join('')}</ul>
+    <button class="btn ${p.pop || special ? 'accent' : ''}" data-plan="${p.id}" ${out || (p.recurring && sub && !sub.cancelled) ? 'disabled' : ''}>${out ? 'Agotado' : p.recurring ? (sub && !sub.cancelled ? 'Ya la tienes' : 'Suscribirme') : 'Comprar'}</button></div>`; }).join('') || `<p class="muted">Pronto tendrás aquí los bonos del centro.</p>`}</div>
   <h2 class="section-t desc">Métodos de pago</h2>
   <div class="panel methods-panel">
     ${w.cards.map((c,i) => `<div class="mrow"><span class="pm-ic pm-saved" aria-hidden="true"></span><span style="flex:1;min-width:0"><b>${c.brand} ···· ${c.last4}</b><small>Caduca ${c.exp}${i === 0 ? ' · Predeterminada' : ''}</small></span><button class="btn ghost sm" data-delcard="${i}">Quitar</button></div>`).join('')}
@@ -3631,17 +3670,31 @@ function viewPagos(){
 function afterPagos(root){
   const w = walletOf(me());
   root.querySelectorAll('[data-plan]').forEach(b => b.onclick = () => {
-    const p = PLANS.find(x => x.id === b.dataset.plan);
-    checkout({ title: p.recurring ? `Suscribirme a ${p.name}` : `Comprar ${p.name}`, lines:[[`${p.name} · ${p.classes} ${U(p.classes)}${p.recurring ? ' al mes' : ''}`, p.price]], total:p.price, recurring:!!p.recurring,
+    const p = plans().find(x => x.id === b.dataset.plan), code = PROMO.pct ? PROMO.code : null;
+    const amount = code ? Math.round(p.price * (100 - PROMO.pct)) / 100 : p.price;
+    const lines = [[`${p.name} · ${p.classes} ${U(p.classes)}${p.recurring ? ' al mes' : ''}`, p.price]];
+    if (code) lines.push([`Código ${code} (−${PROMO.pct} %)${p.recurring ? ', primer mes' : ''}`, amount - p.price]);
+    checkout({ title: p.recurring ? `Suscribirme a ${p.name}` : `Comprar ${p.name}`, lines, total:amount, recurring:!!p.recurring,
       onPaid: method => {
-        if (LIVE) return liveOp(() => rpc('buy_plan', { p_plan:p.id, p_method:method }), n => `Listo. Tienes ${n} ${U(n)} en tu bono.`);
-        S.credits[me()] += p.classes;
-        S.payments.push({ uid:me(), ts:Date.now(), concept: p.recurring ? `${p.name} (primer mes)` : p.name, amount:p.price, method });
+        if (LIVE) return liveOp(() => rpc('buy_plan', { p_plan:p.id, p_method:method, p_code:code }), n => { PROMO = {}; return `Listo. Tienes ${n} ${U(n)} en tu bono.`; });
+        S.credits[me()] += p.classes; PROMO = {};
+        S.payments.push({ uid:me(), ts:Date.now(), concept: (p.recurring ? `${p.name} (primer mes)` : p.name) + (code ? ` · código ${code}` : ''), amount, method, planId:p.id });
         if (p.recurring) S.subs[me()] = { plan:p.id, since:Date.now(), next:nextMonth(), method };
-        notify(me(), `Pago recibido: ${p.name} (${eur(p.price)}). Se han añadido ${p.classes} ${U(p.classes)} a tu bono.`);
+        notify(me(), `Pago recibido: ${p.name} (${eur(amount)}). Se han añadido ${p.classes} ${U(p.classes)} a tu bono.`);
         save(); render(); toast(`Listo. Tienes ${S.credits[me()]} ${U(S.credits[me()])} en tu bono.`);
       }});
   });
+  const pf = root.querySelector('#promoForm');
+  if (pf) pf.onsubmit = async e => {
+    e.preventDefault();
+    const code = (root.querySelector('#promoIn').value || '').trim().toUpperCase(); if (!code) return;
+    let pct = null;
+    if (LIVE){ try { pct = await rpc('check_code', { p_code:code }); } catch(err){ return toast(errText(err)); } }
+    else pct = codePct(code);
+    if (!pct) return toast(ERRS.BAD_CODE);
+    PROMO = { code, pct }; render(); toast(`Código aplicado: −${pct} % en tu compra.`);
+  };
+  const po = root.querySelector('#promoOff'); if (po) po.onclick = () => { PROMO = {}; render(); };
   root.querySelectorAll('[data-delcard]').forEach(b => b.onclick = () => { w.cards.splice(+b.dataset.delcard, 1); save(); render(); toast('Tarjeta eliminada.'); });
   const di = root.querySelector('#delIban'); if (di) di.onclick = () => { w.iban = null; save(); render(); toast('Cuenta eliminada.'); };
   root.querySelector('#addCard').onclick = () => modal(`<h2>Añadir tarjeta</h2>
@@ -3963,8 +4016,9 @@ function fichaFromReg(r){
     archivos:r.archivos.map(f => ({ ...f, ts:now })), derechos:[], tutor: age(d.nac) < 18 ? { nombre:d.tn.trim(), dni:d.td.toUpperCase() } : null, origen: r.byAdmin ? 'Recepción' : 'App' };
 }
 function welcomeClient(uid, byAdmin){
-  const c = S.clients[uid];
-  sendMsg(uid, 'centro', `Hola, ${c.nombre}. Te damos la bienvenida a ${esc(S.cfg.name)}. Compra tu primer bono en Pagos y reserva tu ${SEC.unit} desde Horario.`, { kind:'aviso', cat:'Bienvenida' });
+  const c = S.clients[uid], trial = byAdmin ? 0 : (S.cfg.trial || 0);
+  if (trial){ S.credits[uid] = (S.credits[uid] || 0) + trial; notify(uid, `Tienes ${trial} ${U(trial)} de prueba gratis en tu bono. Reserva desde Horario.`); }
+  sendMsg(uid, 'centro', `Hola, ${c.nombre}. Te damos la bienvenida a ${esc(S.cfg.name)}. ${trial ? `Ya puedes reservar tu ${SEC.unit} de prueba desde Horario.` : `Compra tu primer bono en Pagos y reserva tu ${SEC.unit} desde Horario.`}`, { kind:'aviso', cat:'Bienvenida' });
   notify(ADMIN, `Nuevo cliente: ${SOCIOS[uid]} se ha registrado ${byAdmin ? 'en recepción' : 'desde la app'} con la documentación firmada.`);
 }
 function createClient(){
@@ -4200,11 +4254,27 @@ function afterClientes(root){
 
 
 // ---------- ajustes del centro (sector y reglas) ----------
-let cfgDraft = null;
+let cfgDraft = null, cfgBase = '', ajDay = 1;
+const clone = o => JSON.parse(JSON.stringify(o));
+const LEVELS = ['Todos', 'Inicial', 'Intermedio', 'Avanzado'];
+const DOW = [[1,'L','lunes'],[2,'M','martes'],[3,'X','miércoles'],[4,'J','jueves'],[5,'V','viernes'],[6,'S','sábado'],[0,'D','domingo']];
+// Borrador de Ajustes: incluye horario, equipo, bonos, códigos y apertura para editarlos sin tocar S hasta guardar.
+function newDraft(){
+  const d = clone({ ...S.cfg, week:WEEK, staff:Object.values(INSTR).map(x => x.name), plans:plans(), codes:S.cfg.codes || [] });
+  d.trial = d.trial || 0; d.open = d.open || '';
+  Object.values(d.week).forEach(list => list.forEach(r => { if (!r[4]) r[4] = (TYPES[r[1]] && TYPES[r[1]].cap) || CAP; }));
+  return d;
+}
 function viewAjustes(){
-  const d = cfgDraft || (cfgDraft = { ...S.cfg });
-  const sec = SECTORS[d.sector];
-  return `<div class="view-head"><div><h1>Ajustes del centro</h1><p class="muted">Adapta la app a tu tipo de centro y a tus reglas de reserva.</p></div></div>
+  if (!cfgDraft){ cfgDraft = newDraft(); cfgBase = JSON.stringify(cfgDraft); }
+  const d = cfgDraft, sec = SECTORS[d.sector], keys = staff(d.staff);
+  const fld = (label, path, val, attrs = '') => `<label class="field">${label}<input data-p="${path}" value="${esc(val ?? '')}" ${attrs}></label>`;
+  const num = (label, path, val, min, max, extra = '') => fld(label, path, val, `type="number" min="${min}" max="${max}" inputmode="decimal" ${extra}`);
+  const sel = (label, path, val, opts) => `<label class="field">${label}<select data-p="${path}">${opts.map(([v, t]) => `<option value="${esc(v)}" ${String(v) === String(val) ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></label>`;
+  const chk = (label, path, val) => `<label><input type="checkbox" data-p="${path}" ${val ? 'checked' : ''}> ${label}</label>`;
+  const rows = d.week[ajDay] || [];
+  const typeOpts = Object.keys(TYPES).map(t => [t, t]), staffOpts = Object.entries(keys).map(([k, v]) => [k, v.name]);
+  return `<div class="view-head"><div><h1>Ajustes del centro</h1><p class="muted">Horario, equipo, precios, promociones y reglas de reserva.</p></div></div>
   <form id="cfgForm" class="panel" style="max-width:900px" novalidate>
     ${EDITION === 'alento' ? `<h2>Centro</h2><p class="muted" style="margin:0;font-size:14px">Alento · Pilates. Las versiones para otros sectores están guardadas como plantilla aparte.</p>` : `<h2>Tipo de centro</h2>
     <div class="sectors" role="radiogroup" aria-label="Tipo de centro">${Object.entries(SECTORS).map(([k,v]) => `
@@ -4214,37 +4284,147 @@ function viewAjustes(){
     <p class="muted" style="font-size:13px;margin:10px 0 0">Cada tipo trae sus actividades, su equipo, su vocabulario («${sec.units}», «${sec.staffLabel.toLowerCase()}») y un horario de ejemplo que luego se puede editar.</p>`}
     <h2 style="margin-top:22px">Datos y reglas</h2>
     <div class="grid2">
-      ${EDITION === 'alento' ? '' : `<label class="field">Nombre del centro<input id="cf_name" value="${esc(d.name)}"></label>`}
-      <label class="field">Personas por ${sec.unit} (por defecto)<input id="cf_cap" type="number" min="1" max="60" value="${d.cap}"></label>
-      <label class="field">Plazas en lista de espera<input id="cf_wait" type="number" min="0" max="20" value="${d.wait}"></label>
-      <label class="field">Horas mínimas para cancelar sin perder la ${sec.unit}<input id="cf_cancel" type="number" min="0" max="72" value="${d.cancel}"></label>
+      ${EDITION === 'alento' ? '' : fld('Nombre del centro', 'name', d.name, 'id="cf_name"')}
+      ${num(`Personas por ${sec.unit} (por defecto)`, 'cap', d.cap, 1, 60)}
+      ${num('Plazas en lista de espera', 'wait', d.wait, 0, 20)}
+      ${num(`Horas mínimas para cancelar sin perder la ${sec.unit}`, 'cancel', d.cancel, 0, 72)}
     </div>
-    <p class="muted" style="font-size:12.5px;margin:8px 0 0">${EDITION === 'alento' ? '' : 'Si el nombre no es «Alento», la cabecera muestra el nombre del centro en lugar del logo.'}${Object.values(sec.types).some(t => t.cap) ? ' Algunas actividades de este sector tienen su propio cupo: ' + Object.entries(sec.types).filter(([,t]) => t.cap).map(([n,t]) => `${n} (${t.cap})`).join(', ') + '.' : ''}</p>
+
+    <section class="aj-sec"><h2>Apertura y promociones</h2>
+      <p class="muted">Si pones una fecha de apertura, el horario empieza ese día y los clientes pueden reservar y comprar antes (preventa).</p>
+      <div class="grid2">
+        ${fld('Fecha de apertura', 'open', d.open, 'type="date"')}
+        ${num(`${cap1(SEC.units)} de prueba gratis al registrarse`, 'trial', d.trial, 0, 10)}
+      </div>
+      <h3 style="margin:18px 0 0;font-size:15px">Códigos promocionales</h3>
+      <p class="muted" style="font-size:13px;margin:4px 0 0">Descuento en la compra de bonos (en las cuotas, solo el primer mes).</p>
+      ${d.codes.map((c, i) => `<div class="aj-card"><div class="aj-grid">
+        ${fld('Código', `codes.${i}.code`, c.code, 'data-up placeholder="ALENTO20" autocapitalize="characters"')}
+        ${num('Descuento (%)', `codes.${i}.pct`, c.pct, 1, 100)}
+        ${fld('Válido hasta', `codes.${i}.until`, c.until, 'type="date"')}
+      </div><div class="aj-row"><div class="aj-checks" style="margin:0">${chk('Activo', `codes.${i}.on`, c.on !== false)}</div><button type="button" class="linkbtn" data-act="del-code" data-i="${i}">Quitar código</button></div></div>`).join('')}
+      <button type="button" class="btn ghost sm" data-act="add-code" style="margin-top:12px">Añadir código</button>
+    </section>
+
+    <section class="aj-sec"><h2>Bonos y precios</h2>
+      <p class="muted">Para un bono de preventa o fundador, pon una fecha límite y un número máximo de ventas: en la app saldrá destacado con las plazas que quedan.</p>
+      ${d.plans.map((pl, i) => `<div class="aj-card"><div class="aj-grid">
+        <div class="wide">${fld('Nombre', `plans.${i}.name`, pl.name, 'placeholder="Bono 8"')}</div>
+        ${num(cap1(SEC.units), `plans.${i}.classes`, pl.classes, 1, 200, 'step="1"')}
+        ${num('Precio (€)', `plans.${i}.price`, pl.price, 0, 5000, 'step="0.01"')}
+        ${sel('Tipo', `plans.${i}.recurring`, pl.recurring ? '1' : '', [['', 'Bono'], ['1', 'Cuota mensual']])}
+        ${fld('A la venta hasta', `plans.${i}.until`, pl.until, 'type="date"')}
+        ${num('Máximo de ventas', `plans.${i}.limit`, pl.limit, 1, 9999, 'step="1" placeholder="Sin límite"')}
+        ${fld('Etiqueta', `plans.${i}.tag`, pl.tag, 'placeholder="Preventa"')}
+        <div class="wide">${fld('Ventajas (separadas por comas)', `plans.${i}.perks`, (pl.perks || []).join(', '), 'data-list placeholder="Válido 8 semanas, Prioridad en lista de espera"')}</div>
+      </div><div class="aj-row"><div class="aj-checks" style="margin:0">${chk('A la venta', `plans.${i}.on`, pl.on !== false)}${chk('Destacado', `plans.${i}.pop`, !!pl.pop)}</div>
+        <span class="muted" style="font-size:12.5px">${pl.limit ? `Vendidos: ${planSold(pl.id)}` : ''}</span><button type="button" class="linkbtn" data-act="del-plan" data-i="${i}">Quitar bono</button></div></div>`).join('')}
+      <button type="button" class="btn ghost sm" data-act="add-plan" style="margin-top:12px">Añadir bono</button>
+    </section>
+
+    <section class="aj-sec"><h2>Equipo</h2>
+      <p class="muted">Las personas que dan las ${SEC.units}. Aparecen en el horario.</p>
+      <div class="aj-staff">${d.staff.map((n, i) => `<span class="chip">${esc(n)}<button type="button" data-act="del-staff" data-i="${i}" aria-label="Quitar a ${esc(n)}">×</button></span>`).join('')}</div>
+      <div class="aj-row" style="justify-content:flex-start"><label class="field" style="margin:0;flex:1 1 200px;max-width:320px;min-width:0"><input id="aj_staff" placeholder="Nombre y apellido" aria-label="Nombre y apellido"></label><button type="button" class="btn ghost sm" data-act="add-staff">Añadir</button></div>
+    </section>
+
+    <section class="aj-sec"><h2>Horario semanal</h2>
+      <p class="muted">Se repite cada semana. Al guardar se actualizan las ${SEC.units} futuras que no tienen reservas.</p>
+      <div class="aj-days" role="group" aria-label="Día de la semana">${DOW.map(([n, l, name]) => `<button type="button" class="chip" data-act="day" data-i="${n}" aria-pressed="${n === ajDay}" aria-label="${name}">${l} <small class="muted">${(d.week[n] || []).length}</small></button>`).join('')}</div>
+      <h3 style="margin:14px 0 0;font-size:15px">${cap1(DOW.find(x => x[0] === ajDay)[2])}</h3>
+      ${rows.length ? rows.map((r, i) => `<div class="aj-class">
+        ${fld('Hora', `week.${ajDay}.${i}.0`, r[0], 'type="time"')}
+        ${sel('Tipo', `week.${ajDay}.${i}.1`, r[1], typeOpts)}
+        ${sel(sec.staffLabel, `week.${ajDay}.${i}.2`, r[2], keys[r[2]] ? staffOpts : [['', 'Elige…'], ...staffOpts])}
+        ${sel('Nivel', `week.${ajDay}.${i}.3`, r[3], (LEVELS.includes(r[3]) ? LEVELS : [r[3], ...LEVELS]).map(x => [x, x]))}
+        ${num('Plazas', `week.${ajDay}.${i}.4`, r[4], 1, 60, 'step="1"')}
+        <button type="button" class="linkbtn" data-act="del-class" data-i="${i}">Quitar</button></div>`).join('') : `<p class="muted" style="font-size:13.5px">Cerrado. Añade una ${SEC.unit} si abrís este día.</p>`}
+      <button type="button" class="btn ghost sm" data-act="add-class" style="margin-top:12px">Añadir ${SEC.unit}</button>
+    </section>
+
     <div class="err" id="cf_err" role="alert"></div>
-    <div class="actions" style="justify-content:flex-start"><button class="btn" type="submit">Guardar ajustes</button>${cfgDraft && JSON.stringify(cfgDraft) !== JSON.stringify(S.cfg) ? '<button type="button" class="btn ghost" id="cf_reset">Descartar cambios</button>' : ''}</div>
+    <div class="actions" style="justify-content:flex-start"><button class="btn" type="submit">Guardar ajustes</button>${JSON.stringify(d) !== cfgBase ? '<button type="button" class="btn ghost" id="cf_reset">Descartar cambios</button>' : ''}</div>
   </form>`;
 }
+function setPath(o, path, v){ const ks = path.split('.'); let t = o; ks.slice(0, -1).forEach(k => t = t[k]); t[ks[ks.length - 1]] = v; }
 function afterAjustes(root){
   const d = cfgDraft;
   root.querySelectorAll('[data-sector]').forEach(b => b.onclick = () => {
     const k = b.dataset.sector; if (k === d.sector) return;
-    Object.assign(d, { sector:k, cap:SECTORS[k].cap, wait:SECTORS[k].wait, cancel:SECTORS[k].cancel }); render();
+    Object.assign(d, { sector:k, cap:SECTORS[k].cap, wait:SECTORS[k].wait, cancel:SECTORS[k].cancel, week:clone(SECTORS[k].week), staff:Object.values(SECTORS[k].staff).map(x => x.name) });
+    Object.values(d.week).forEach(list => list.forEach(r => { if (!r[4]) r[4] = (SECTORS[k].types[r[1]] && SECTORS[k].types[r[1]].cap) || SECTORS[k].cap; }));
+    TYPES = { ...SECTORS[k].types }; render();
   });
-  const nm = root.querySelector('#cf_name'); if (nm) nm.oninput = e => d.name = e.target.value;
-  [['cf_cap','cap'],['cf_wait','wait'],['cf_cancel','cancel']].forEach(([id,k]) => root.querySelector('#' + id).oninput = e => d[k] = parseInt(e.target.value, 10));
-  const rs = root.querySelector('#cf_reset'); if (rs) rs.onclick = () => { cfgDraft = null; render(); };
+  root.querySelectorAll('[data-p]').forEach(el => el.oninput = el.onchange = () => {
+    let v = el.type === 'checkbox' ? el.checked : el.value;
+    if (el.type === 'number') v = el.value === '' ? null : Number(el.value);
+    else if (el.hasAttribute('data-up')) v = el.value = el.value.toUpperCase().replace(/\s/g, '');
+    else if (el.hasAttribute('data-list')) v = el.value.split(',').map(x => x.trim()).filter(Boolean);
+    else if (/\.recurring$/.test(el.dataset.p)) v = el.value === '1';
+    setPath(d, el.dataset.p, v);
+  });
+  const toastErr = m => { const e = root.querySelector('#cf_err'); e.textContent = m; e.scrollIntoView({ block:'center' }); };
+  root.querySelectorAll('[data-act]').forEach(b => b.onclick = () => {
+    const i = +b.dataset.i, keys = staff(d.staff);
+    switch (b.dataset.act){
+      case 'add-code': d.codes.push({ code:'', pct:10 }); break;
+      case 'del-code': d.codes.splice(i, 1); break;
+      case 'add-plan': d.plans.push({ id:'b' + Date.now().toString(36), name:'', classes:8, price:0 }); break;
+      case 'del-plan': d.plans.splice(i, 1); break;
+      case 'add-staff': { const n = root.querySelector('#aj_staff').value.trim().replace(/\s+/g, ' '); if (!n) return; d.staff.push(n); break; }
+      case 'del-staff': {
+        const k = Object.keys(keys)[i], used = Object.values(d.week).some(list => list.some(r => r[2] === k));
+        if (used) return toast(`${d.staff[i]} tiene ${SEC.units} en el horario. Cámbialas antes de quitarle.`);
+        d.staff.splice(i, 1); break;
+      }
+      case 'day': ajDay = i; break;
+      case 'add-class': { const list = d.week[ajDay] || (d.week[ajDay] = []), last = list[list.length - 1];
+        list.push(last ? [last[0], last[1], last[2], last[3], last[4]] : ['18:00', Object.keys(TYPES)[0], Object.keys(keys)[0] || '', 'Todos', d.cap]); break; }
+      case 'del-class': d.week[ajDay].splice(i, 1); break;
+    }
+    render();
+  });
+  const rs = root.querySelector('#cf_reset'); if (rs) rs.onclick = () => { cfgDraft = null; if (EDITION !== 'alento') applySector(S.cfg); render(); };
   root.querySelector('#cfgForm').onsubmit = e => {
     e.preventDefault();
-    const err = root.querySelector('#cf_err');
-    if (!d.name.trim()) return err.textContent = 'Escribe el nombre del centro.';
-    if (!(d.cap >= 1 && d.cap <= 60)) return err.textContent = 'El cupo debe estar entre 1 y 60 personas.';
-    if (!(d.wait >= 0 && d.wait <= 20)) return err.textContent = 'La lista de espera debe tener entre 0 y 20 plazas.';
-    if (!(d.cancel >= 0 && d.cancel <= 72)) return err.textContent = 'Las horas para cancelar deben estar entre 0 y 72.';
+    const keys = staff(d.staff), dayName = n => DOW.find(x => x[0] === +n)[2];
+    if (!String(d.name || '').trim()) return toastErr('Escribe el nombre del centro.');
+    if (!(d.cap >= 1 && d.cap <= 60)) return toastErr('El cupo debe estar entre 1 y 60 personas.');
+    if (!(d.wait >= 0 && d.wait <= 20)) return toastErr('La lista de espera debe tener entre 0 y 20 plazas.');
+    if (!(d.cancel >= 0 && d.cancel <= 72)) return toastErr('Las horas para cancelar deben estar entre 0 y 72.');
+    if (!(Number.isInteger(d.trial || 0) && (d.trial || 0) >= 0 && d.trial <= 10)) return toastErr(`Las ${SEC.units} de prueba deben estar entre 0 y 10.`);
+    const seen = new Set();
+    for (const c of d.codes){
+      if (!/^[A-Z0-9-]{3,20}$/.test(c.code || '')) return toastErr('Cada código debe tener entre 3 y 20 letras o números, sin espacios.');
+      if (seen.has(c.code)) return toastErr(`El código ${c.code} está repetido.`); seen.add(c.code);
+      if (!(Number.isInteger(c.pct) && c.pct >= 1 && c.pct <= 100)) return toastErr(`El descuento de ${c.code} debe estar entre 1 y 100 %.`);
+    }
+    if (!d.plans.some(p => p.on !== false)) return toastErr('Deja al menos un bono a la venta.');
+    for (const p of d.plans){
+      if (!String(p.name || '').trim()) return toastErr('Pon nombre a todos los bonos.');
+      if (!(Number.isInteger(p.classes) && p.classes >= 1 && p.classes <= 200)) return toastErr(`«${p.name}»: el número de ${SEC.units} debe estar entre 1 y 200.`);
+      if (!(typeof p.price === 'number' && p.price >= 0)) return toastErr(`«${p.name}»: revisa el precio.`);
+      if (p.limit != null && !(Number.isInteger(p.limit) && p.limit >= 1)) return toastErr(`«${p.name}»: el máximo de ventas debe ser un número entero.`);
+    }
+    if (!d.staff.length) return toastErr(`Añade al menos una persona al equipo.`);
+    for (const [n, list] of Object.entries(d.week)) for (const r of list){
+      if (!/^\d{2}:\d{2}$/.test(r[0] || '')) return toastErr(`Revisa la hora de las ${SEC.units} del ${dayName(n)}.`);
+      if (!keys[r[2]]) return toastErr(`Elige ${sec(d).staffLabel.toLowerCase()} para la ${SEC.unit} de las ${r[0]} del ${dayName(n)}.`);
+      if (!(Number.isInteger(r[4]) && r[4] >= 1 && r[4] <= 60)) return toastErr(`Las plazas de la ${SEC.unit} de las ${r[0]} del ${dayName(n)} deben estar entre 1 y 60.`);
+    }
+    // limpieza antes de guardar
+    d.plans = d.plans.map(p => Object.fromEntries(Object.entries({ ...p, name:p.name.trim() }).filter(([k, v]) => v !== null && v !== '' && v !== false && !(Array.isArray(v) && !v.length))));
+    d.week = Object.fromEntries(Object.entries(d.week).filter(([, list]) => list.length).map(([n, list]) => [n, list.slice().sort((a, b) => a[0].localeCompare(b[0]))]));
     const apply = () => {
       const changedSector = d.sector !== S.cfg.sector;
-      S.cfg = { ...d, name:d.name.trim() }; applySector(S.cfg);
+      S.cfg = { ...d, name:String(d.name).trim() }; if (!S.cfg.open) delete S.cfg.open; applySector(S.cfg);
       if (changedSector){ S.classes = genClasses(); S.filter = 'Todas'; }
-      else S.classes.forEach(c => { if (hoursTo(c) > 0) c.cap = Math.max(c.booked.length, (TYPES[c.type] && TYPES[c.type].cap) || CAP); });
+      else if (!LIVE){
+        // demo: se regenera el horario conservando las clases que ya existían (y sus reservas)
+        const old = S.classes, same = (a, b) => a.date === b.date && a.time === b.time && a.type === b.type;
+        const fresh = genClasses().map(n => { const o = old.find(x => same(x, n)); if (o){ o.cap = Math.max(o.booked.length, n.cap); o.instr = n.instr; o.level = n.level; return o; } return n; });
+        S.classes = old.filter(o => hoursTo(o) <= 0 && !fresh.includes(o)).concat(fresh);
+      }
       cfgDraft = null;
       if (LIVE) return liveOp(() => rpc('save_config', { p_name:S.cfg.name, p_cfg:cfgPayload(), p_week:weekPayload() }), () => 'Ajustes guardados. El horario se ha actualizado.');
       save(); render();
@@ -4255,6 +4435,7 @@ function afterAjustes(root){
     else apply();
   };
 }
+const sec = d => SECTORS[d.sector] || SECTORS.pilates;
 
 // ---------- control de acceso con código QR ----------
 // El QR del socio cambia cada 30 s y lleva una firma, para que una captura de pantalla no sirva más tarde.

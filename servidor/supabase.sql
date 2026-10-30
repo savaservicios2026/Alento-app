@@ -9,7 +9,7 @@
 create table if not exists centers (
   id text primary key,
   name text not null,
-  cfg jsonb not null default '{}',          -- cupo, lista de espera, horas para cancelar, unidad
+  cfg jsonb not null default '{}',          -- cupo, espera, cancelación, unidad, equipo, bonos (plans), códigos (codes), prueba (trial), apertura (open)
   week jsonb not null default '{}',         -- plantilla semanal: {"1":[["08:00","Reformer","laura","Inicial",8],...],...}
   test_payments boolean not null default true,  -- true: los pagos de la app son de prueba y suman clases
   created_at timestamptz not null default now()
@@ -83,6 +83,9 @@ create table if not exists payments (
   created_at timestamptz not null default now()
 );
 
+alter table payments add column if not exists plan_id text;   -- bono comprado desde la app (para los bonos con plazas limitadas)
+alter table payments add column if not exists code text;      -- código promocional usado
+
 create table if not exists access_logs (
   id bigserial primary key,
   center_id text not null references centers(id),
@@ -113,14 +116,23 @@ create or replace function today_es() returns date
 language sql stable as $$ select (now() at time zone 'Europe/Madrid')::date $$;
 
 -- Crea las clases de los próximos 14 días a partir de la plantilla semanal del centro.
+-- Primer día con clases: hoy, o la fecha de apertura si todavía no se ha abierto (preventa).
+create or replace function start_day(c centers) returns date
+language plpgsql stable set search_path = public as $$
+begin
+  return greatest(today_es(), coalesce(nullif(c.cfg->>'open', '')::date, today_es()));
+exception when others then return today_es();
+end $$;
+
 create or replace function ensure_classes(p_center text) returns void
 language plpgsql security definer set search_path = public as $$
-declare w jsonb; d date; e jsonb;
+declare w jsonb; d date; e jsonb; c centers;
 begin
-  select week into w from centers where id = p_center;
+  select * into c from centers where id = p_center;
+  w := c.week;
   if w is null or w = '{}'::jsonb then return; end if;
   for i in 0..13 loop
-    d := today_es() + i;
+    d := start_day(c) + i;
     for e in select * from jsonb_array_elements(coalesce(w -> (extract(dow from d)::int)::text, '[]'::jsonb)) loop
       insert into classes (center_id, date, time, type, instr, level, cap, starts_at)
       values (p_center, d, e->>0, e->>1, coalesce(e->>2,''), coalesce(e->>3,''), coalesce((e->>4)::int, 8),
@@ -133,18 +145,24 @@ end $$;
 -- Quien se registra en la app: si recepción ya le dio de alta con ese email, se enlaza; si no, se crea su ficha.
 create or replace function handle_new_user() returns trigger
 language plpgsql security definer set search_path = public as $$
-declare cid text := coalesce(new.raw_user_meta_data->>'center', 'alento'); pid uuid;
+declare cid text := coalesce(new.raw_user_meta_data->>'center', 'alento'); pid uuid; trial int;
 begin
   if not exists (select 1 from centers where id = cid) then return new; end if;
   update profiles set auth_id = new.id
    where center_id = cid and lower(email) = lower(new.email) and auth_id is null
   returning id into pid;
   if pid is null then
-    insert into profiles (auth_id, center_id, email, ficha)
-    values (new.id, cid, lower(new.email), jsonb_build_object(
+    select least(10, greatest(0, coalesce((cfg->>'trial')::int, 0))) into trial from centers where id = cid;
+    insert into profiles (auth_id, center_id, email, credits, ficha)
+    values (new.id, cid, lower(new.email), trial, jsonb_build_object(
       'nombre', coalesce(new.raw_user_meta_data->>'nombre', ''),
       'apellidos', coalesce(new.raw_user_meta_data->>'apellidos', ''),
-      'email', new.email, 'alta', ms(now()), 'origen', 'App'));
+      'email', new.email, 'alta', ms(now()), 'origen', 'App'))
+    returning id into pid;
+    if trial > 0 then
+      insert into notifs (center_id, profile_id, text)
+      values (cid, pid, 'Tienes ' || trial || case when trial = 1 then ' clase de prueba gratis' else ' clases de prueba gratis' end || ' en tu bono. Reserva desde Horario.');
+    end if;
   end if;
   return new;
 end $$;
@@ -171,7 +189,10 @@ begin
   adm := p.role = 'admin';
   return jsonb_build_object(
     'profile', jsonb_build_object('id', p.id, 'role', p.role, 'email', p.email, 'credits', p.credits, 'wallet', p.wallet, 'subs', p.subs, 'ficha', p.ficha),
-    'center', jsonb_build_object('id', c.id, 'name', c.name, 'cfg', c.cfg, 'week', c.week, 'test_payments', c.test_payments),
+    'center', jsonb_build_object('id', c.id, 'name', c.name, 'week', c.week, 'test_payments', c.test_payments,
+      'cfg', case when adm then c.cfg else (c.cfg - 'codes') || jsonb_build_object('has_codes', jsonb_typeof(c.cfg->'codes') = 'array' and jsonb_array_length(c.cfg->'codes') > 0) end),
+    'sold', (select coalesce(jsonb_object_agg(s.plan_id, s.n), '{}'::jsonb) from (
+      select y.plan_id, count(*) n from payments y where y.center_id = c.id and y.plan_id is not null group by y.plan_id) s),
     'classes', (select coalesce(jsonb_agg(t.j order by t.d, t.tm), '[]'::jsonb) from (
       select k.date d, k.time tm, jsonb_build_object(
         'id', k.id, 'date', k.date, 'time', k.time, 'type', k.type, 'instr', k.instr, 'level', k.level, 'cap', k.cap,
@@ -183,7 +204,7 @@ begin
         'mine', (select b.status from bookings b where b.class_id = k.id and b.profile_id = p.id),
         'pos', (select count(*) from bookings b where b.class_id = k.id and b.status = 'wait'
                  and b.created_at <= (select m.created_at from bookings m where m.class_id = k.id and m.profile_id = p.id and m.status = 'wait'))
-      ) j from classes k where k.center_id = c.id and k.date between today_es() - 1 and today_es() + 14) t),
+      ) j from classes k where k.center_id = c.id and k.date between today_es() - 1 and start_day(c) + 14) t),
     'clients', (select coalesce(jsonb_object_agg(x.id, x.ficha || jsonb_build_object('_credits', x.credits, '_cuenta', x.auth_id is not null, '_subs', x.subs)), '{}'::jsonb)
                 from profiles x where x.center_id = c.id and x.role = 'socio' and (adm or x.id = p.id)),
     'messages', (select coalesce(jsonb_agg(jsonb_build_object('id', m.id, 'thread', m.thread, 'from_center', m.from_center, 'text', m.text, 'kind', m.kind, 'cat', m.cat, 'read', m.read, 'ts', ms(m.created_at)) order by m.created_at), '[]'::jsonb)
@@ -272,25 +293,64 @@ begin
 end $$;
 
 -- ---------- pagos de prueba ----------
-create or replace function buy_plan(p_plan text, p_method text) returns int
+-- Bonos del centro: los de Ajustes (cfg.plans) o, si no hay, los de ejemplo.
+create or replace function plan_of(c centers, p_plan text) returns jsonb
+language sql stable set search_path = public as $$
+  select x from jsonb_array_elements(case when jsonb_typeof(c.cfg->'plans') = 'array' then c.cfg->'plans' else
+    '[{"id":"p1","name":"Clase suelta","classes":1,"price":16},{"id":"p4","name":"Bono 4","classes":4,"price":54},
+      {"id":"p8","name":"Bono 8","classes":8,"price":98},{"id":"p12","name":"Bono 12","classes":12,"price":132},
+      {"id":"m8","name":"Cuota mensual","classes":8,"price":89,"recurring":true}]'::jsonb end) x
+  where x->>'id' = p_plan limit 1
+$$;
+
+-- Descuento (%) de un código promocional activo, o null si no existe o ha caducado.
+create or replace function code_pct(c centers, p_code text) returns int
+language sql stable set search_path = public as $$
+  select least(100, greatest(0, (x->>'pct')::int)) from jsonb_array_elements(case when jsonb_typeof(c.cfg->'codes') = 'array' then c.cfg->'codes' else '[]'::jsonb end) x
+  where upper(x->>'code') = upper(trim(p_code)) and coalesce(x->>'on', 'true') <> 'false'
+    and (nullif(x->>'until', '') is null or today_es() <= (x->>'until')::date)
+  limit 1
+$$;
+
+create or replace function check_code(p_code text) returns int
 language plpgsql security definer set search_path = public as $$
-declare p profiles; c centers; n int; price numeric; pname text; rec boolean := false; unit text;
+declare p profiles; c centers;
+begin
+  p := me_profile();
+  if p.id is null then raise exception 'NO_SESSION'; end if;
+  select * into c from centers where id = p.center_id;
+  return code_pct(c, p_code);
+end $$;
+
+drop function if exists buy_plan(text, text);
+create or replace function buy_plan(p_plan text, p_method text, p_code text default null) returns int
+language plpgsql security definer set search_path = public as $$
+declare p profiles; c centers; pl jsonb; n int; price numeric; pname text; rec boolean; pct int; code text;
 begin
   p := me_profile();
   if p.id is null then raise exception 'NO_SESSION'; end if;
   select * into c from centers where id = p.center_id;
   if not c.test_payments then raise exception 'PAYMENTS_OFF'; end if;
-  select x.n, x.price, x.name, x.rec into n, price, pname, rec from (values
-    ('p1', 1, 16, 'Clase suelta', false), ('p4', 4, 54, 'Bono 4', false), ('p8', 8, 98, 'Bono 8', false),
-    ('p12', 12, 132, 'Bono 12', false), ('m8', 8, 89, 'Cuota mensual', true)) as x(id, n, price, name, rec)
-  where x.id = p_plan;
-  if n is null then raise exception 'NOT_FOUND'; end if;
-  unit := coalesce(c.cfg->>'unit', 'clase');
+  pl := plan_of(c, p_plan);
+  if pl is null or pl->>'on' = 'false' then raise exception 'NOT_FOUND'; end if;
+  if nullif(pl->>'until', '') is not null and today_es() > (pl->>'until')::date then raise exception 'PLAN_ENDED'; end if;
+  if nullif(pl->>'limit', '') is not null then
+    perform pg_advisory_xact_lock(hashtext(c.id || ':' || p_plan));
+    if (select count(*) from payments y where y.center_id = c.id and y.plan_id = p_plan) >= (pl->>'limit')::int then raise exception 'SOLD_OUT'; end if;
+  end if;
+  n := (pl->>'classes')::int; price := (pl->>'price')::numeric; pname := pl->>'name';
+  rec := coalesce((pl->>'recurring')::boolean, false);
+  if nullif(trim(coalesce(p_code, '')), '') is not null then
+    pct := code_pct(c, p_code);
+    if pct is null then raise exception 'BAD_CODE'; end if;
+    code := upper(trim(p_code));
+    price := round(price * (100 - pct) / 100.0, 2);
+  end if;
   update profiles set credits = credits + n,
     subs = case when rec then jsonb_build_object('plan', p_plan, 'since', ms(now()), 'next', ms(date_trunc('month', now()) + interval '1 month'), 'method', p_method) else subs end
   where id = p.id returning credits into n;
-  insert into payments (center_id, profile_id, concept, amount, method)
-  values (c.id, p.id, case when rec then pname || ' (primer mes)' else pname end, price, p_method);
+  insert into payments (center_id, profile_id, concept, amount, method, plan_id, code)
+  values (c.id, p.id, case when rec then pname || ' (primer mes)' else pname end || coalesce(' · código ' || code, ''), price, p_method, p_plan, code);
   perform notify_user(c.id, p.id, 'Pago recibido: ' || pname || ' (' || price || ' €). Se han añadido clases a tu bono.');
   return n;
 end $$;
@@ -434,10 +494,11 @@ end $$;
 
 -- Solo las funciones públicas de la app se pueden llamar desde fuera.
 do $$ declare f text; begin
-  foreach f in array array['me_profile()','ensure_classes(text)','notify_user(text,uuid,text)','promote(uuid)','require_admin()','handle_new_user()'] loop
+  foreach f in array array['me_profile()','ensure_classes(text)','notify_user(text,uuid,text)','promote(uuid)','require_admin()','handle_new_user()',
+                           'start_day(centers)','plan_of(centers,text)','code_pct(centers,text)'] loop
     execute format('revoke execute on function %s from public, anon, authenticated', f);
   end loop;
-  foreach f in array array['hydrate()','book_class(uuid)','cancel_booking(uuid)','buy_plan(text,text)','push(jsonb)',
+  foreach f in array array['hydrate()','book_class(uuid)','cancel_booking(uuid)','buy_plan(text,text,text)','check_code(text)','push(jsonb)',
                            'admin_create_client(jsonb)','admin_add_credits(uuid,int,numeric,text,text)','admin_baja(uuid)','save_config(text,jsonb,jsonb)'] loop
     execute format('revoke execute on function %s from public, anon', f);
     execute format('grant execute on function %s to authenticated', f);
