@@ -257,6 +257,15 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between;
 .ficha-hd h2{font-size:22px}
 .ficha-hd > div{flex:1 1 200px}
 .av.lg{width:52px;height:52px;font-size:17px}
+.av{overflow:hidden}.av img,.me-btn img{width:100%;height:100%;object-fit:cover;display:block}
+.me-btn{overflow:hidden;padding:0}
+.av-edit{position:relative;cursor:pointer;flex:none;border-radius:50%}
+.av-edit .av.lg{width:64px;height:64px;font-size:20px}
+.av-edit .cam{position:absolute;right:-2px;bottom:-2px;width:24px;height:24px;border-radius:50%;background:var(--surface);border:1px solid var(--line);display:grid;place-items:center;color:var(--ink)}
+.av-edit .cam svg{width:14px;height:14px}
+.av-edit:focus-within{box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--accent)}
+.qrsheet .av.lg{width:72px;height:72px;font-size:22px;margin:4px auto 0}
+.result .who{display:flex;gap:12px;align-items:center}.result .who .av{width:56px;height:56px;font-size:18px;flex:none}
 .alert{background:var(--warn-soft);color:var(--ink);border-radius:12px;padding:12px 14px;font-size:14px;margin-top:10px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .alert b{color:var(--warn)}
 .kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:12px}
@@ -3407,7 +3416,7 @@ function renderHeader(){
   const um = unreadMsgs(me());
   ['#msgBadge','#msgBadge2'].forEach(id => { const mb = $(id); mb.hidden = !um; mb.textContent = um; });
   const mbtn = $('#meBtn'); mbtn.hidden = isAdmin() || isGuest(); $('#qrBtn').hidden = mbtn.hidden;
-  if (!mbtn.hidden){ const c = S.clients[me()]; mbtn.textContent = c ? c.nombre[0] + c.apellidos[0] : ''; mbtn.setAttribute('aria-pressed', S.tab === 'perfil'); }
+  if (!mbtn.hidden){ const c = S.clients[me()]; if (c && c.foto) mbtn.innerHTML = `<img src="${c.foto}" alt="">`; else mbtn.textContent = c ? initials(c) : ''; mbtn.setAttribute('aria-pressed', S.tab === 'perfil'); }
 }
 
 const ISO = cls => `<svg class="${cls||''}" viewBox="0 0 10 10" aria-hidden="true"><use href="#alento-iso"/></svg>`;
@@ -3768,7 +3777,7 @@ function viewMensajes(){
     <section class="panel chat-panel">
       <h2>Conversaciones</h2>
       <div class="threads" role="group" aria-label="Conversaciones">${threads.map(t => `<button class="thread" data-sel="${t.u}" aria-pressed="${t.u === compose.sel}">
-        <span class="av">${SOCIOS[t.u].split(' ').map(w => w[0]).join('')}</span>
+        ${avatar(S.clients[t.u])}
         <span style="min-width:0;flex:1;text-align:left"><b>${SOCIOS[t.u]}</b><small>${t.last ? esc(t.last.text) : 'Sin mensajes'}</small></span>
         ${t.un ? `<span class="badge static">${t.un}</span>` : ''}</button>`).join('')}</div>
       ${chatBox(compose.sel, ADMIN, 'reply', `Responder a ${SOCIOS[compose.sel]}…`)}
@@ -3841,6 +3850,23 @@ function missing(c){
   if (!c.emerg || !c.emerg.nombre || !c.emerg.tel) out.push('Contacto de emergencia');
   if (age(c.nac) !== null && age(c.nac) < 18 && !(c.tutor && c.tutor.nombre)) out.push('Autorización del tutor legal');
   return out;
+}
+// Avatar del cliente: su foto si la ha puesto, si no sus iniciales.
+const initials = c => ((c.nombre || '?')[0] + ((c.apellidos || '')[0] || '')).toUpperCase();
+const avatar = (c, cls = '') => `<span class="av ${cls}">${c && c.foto ? `<img src="${c.foto}" alt="">` : esc(c ? initials(c) : '?')}</span>`;
+// Reduce la foto a un cuadrado de 192 px para que ocupe poco (unos 15 KB).
+function photoFrom(file){
+  return new Promise((ok, ko) => {
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => {
+      const n = 192, cv = document.createElement('canvas'), side = Math.min(img.width, img.height);
+      cv.width = cv.height = n;
+      cv.getContext('2d').drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, n, n);
+      URL.revokeObjectURL(url); ok(cv.toDataURL('image/jpeg', 0.82));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); ko(); };
+    img.src = url;
+  });
 }
 const hasHealth = c => c.salud && (c.salud.lesiones || c.salud.patologias || c.salud.medicacion || (c.salud.embarazo && c.salud.embarazo !== 'No'));
 
@@ -4009,8 +4035,9 @@ function fichaHTML(uid, viewer){
   const paid = S.payments.filter(p => p.uid === uid).reduce((s,p) => s + p.amount, 0);
   return `<div class="ficha">
     <div class="ficha-hd">
-      <span class="av lg">${esc(c.nombre[0] + c.apellidos[0])}</span>
-      <div style="min-width:0;flex:1"><h2>${esc(c.nombre)} ${esc(c.apellidos)}</h2>
+      <label class="av-edit" title="${c.foto ? 'Cambiar la foto' : 'Poner una foto'}">${avatar(c, 'lg')}<span class="cam" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></span><input type="file" id="f_photo" accept="image/*" class="sr" aria-label="${c.foto ? 'Cambiar la foto' : 'Poner una foto'}"></label>
+      <div style="min-width:0;flex:1 1 160px"><h2>${esc(c.nombre)} ${esc(c.apellidos)}</h2>
+        ${c.foto ? '<button class="linkbtn" id="f_nophoto" style="font-size:12.5px">Quitar la foto</button>' : `<button class="linkbtn" id="f_addphoto" style="font-size:12.5px">${adm ? 'Hacerle una foto' : 'Poner mi foto'}</button>`}
         <div class="meta"><span>Cliente desde ${fmtDate(c.alta)}</span>${c.origen ? `<span>Alta: ${esc(c.origen)}</span>` : ''}${a !== null ? `<span>${a} años</span>` : ''}</div></div>
       ${miss.length ? `<span class="status wait">${miss.length} ${miss.length === 1 ? 'pendiente' : 'pendientes'}</span>` : '<span class="status ok">Documentación completa</span>'}
     </div>
@@ -4099,6 +4126,14 @@ function editModal(uid){
 function bindFicha(root, uid, viewer){
   const c = S.clients[uid], adm = viewer === ADMIN;
   root.querySelector('#f_edit').onclick = () => editModal(uid);
+  const ph = root.querySelector('#f_photo');
+  ph.onchange = async () => {
+    const f = ph.files[0]; if (!f) return;
+    try { c.foto = await photoFrom(f); } catch(e){ return toast('No se ha podido leer la imagen. Prueba con otra foto.'); }
+    save(); render(); toast('Foto guardada.');
+  };
+  const ap = root.querySelector('#f_addphoto'); if (ap) ap.onclick = () => ph.click();
+  const np = root.querySelector('#f_nophoto'); if (np) np.onclick = () => { delete c.foto; save(); render(); toast('Foto quitada.'); };
   root.querySelectorAll('[data-sign]').forEach(b => b.onclick = () => signModal(uid, b.dataset.sign));
   root.querySelectorAll('[data-revoke]').forEach(b => b.onclick = () => { c.docs[b.dataset.revoke] = { ok:false, ts:Date.now(), v:c.docs[b.dataset.revoke].v, revoked:true }; save(); render(); toast('Consentimiento retirado.'); });
   const rs = root.querySelector('#f_resign'); if (rs) rs.onclick = () => signModal(uid, null);
@@ -4149,7 +4184,7 @@ function viewClientes(){
     <div class="toolbar"><input id="c_q" type="search" placeholder="Buscar por nombre, DNI, email o teléfono" value="${esc(cliQ)}" aria-label="Buscar clientes">
       <div class="filters" style="margin:0" role="group" aria-label="Filtro">${[['todos','Todos'],['pend','Documentación pendiente'],['salud','Con datos de salud']].map(([k,t]) => `<button class="chip" data-cf="${k}" aria-pressed="${cliF === k}">${t}</button>`).join('')}</div></div>
     ${list.length ? `<div class="table-wrap"><table class="clients"><thead><tr><th>Cliente</th><th>Contacto</th><th>Alta</th><th class="r">Bono</th><th>Documentación</th></tr></thead><tbody>
-      ${list.map(k => { const c = S.clients[k], m = missing(c); return `<tr data-cli="${k}" tabindex="0"><td><b style="font-weight:500">${esc(c.nombre)} ${esc(c.apellidos)}</b>${hasHealth(c) ? ' <span class="tagreq req" title="Tiene datos de salud">Salud</span>' : ''}<br><small class="muted">${esc(c.dni)}</small></td><td>${esc(c.email)}<br><small class="muted">${esc(c.tel)}</small></td><td class="num muted">${fmtDate(c.alta)}</td><td class="r num">${S.credits[k] || 0}</td><td>${m.length ? `<span class="status wait">${m.length} ${m.length === 1 ? 'pendiente' : 'pendientes'}</span>` : '<span class="status ok">Completa</span>'}</td></tr>`; }).join('')}
+      ${list.map(k => { const c = S.clients[k], m = missing(c); return `<tr data-cli="${k}" tabindex="0"><td><span style="display:flex;gap:10px;align-items:center">${avatar(c)}<span><b style="font-weight:500">${esc(c.nombre)} ${esc(c.apellidos)}</b>${hasHealth(c) ? ' <span class="tagreq req" title="Tiene datos de salud">Salud</span>' : ''}<br><small class="muted">${esc(c.dni)}</small></span></span></td><td>${esc(c.email)}<br><small class="muted">${esc(c.tel)}</small></td><td class="num muted">${fmtDate(c.alta)}</td><td class="r num">${S.credits[k] || 0}</td><td>${m.length ? `<span class="status wait">${m.length} ${m.length === 1 ? 'pendiente' : 'pendientes'}</span>` : '<span class="status ok">Completa</span>'}</td></tr>`; }).join('')}
     </tbody></table></div>` : `<div class="empty">${ISO()}<p>No hay clientes que coincidan.</p></div>`}`;
 }
 function afterClientes(root){
@@ -4275,7 +4310,7 @@ function openQR(){
   const list = accessClass(uid), next = list.find(x => x.diff >= -15), miss = missing(c);
   modal(`<div class="qrsheet">
     <svg class="logo" viewBox="0 0 572 179" style="width:110px;color:var(--brand)" aria-label="Alento"><use href="#alento-logo"/></svg>
-    <h2 style="margin-top:10px">${esc(c.nombre)} ${esc(c.apellidos)}</h2>
+    ${c.foto ? avatar(c, 'lg') : ''}<h2 style="margin-top:10px">${esc(c.nombre)} ${esc(c.apellidos)}</h2>
     <p class="muted" style="margin:0">Muestra este código en recepción o en el lector de la entrada</p>
     <div class="qrbox" id="qrBox"></div>
     <div class="qrtimer"><span class="qrbar"><i id="qrBar"></i></span><small>Se renueva en <b id="qrLeft" class="num">30</b> s</small></div>
@@ -4318,7 +4353,8 @@ function viewAcceso(){
 function showResult(root, res){
   registerEntry(res);
   const box = root.querySelector('#scanResult');
-  box.innerHTML = `<div class="result ${res.level}" role="status"><b>${esc(res.title)}</b><span>${esc(res.text)}</span>
+  const who = res.uid && S.clients[res.uid];
+  box.innerHTML = `<div class="result ${res.level}" role="status">${who && who.foto ? `<div class="who">${avatar(who)}<div><b>${esc(res.title)}</b><br><span>${esc(res.text)}</span></div></div>` : `<b>${esc(res.title)}</b><span>${esc(res.text)}</span>`}
     ${!res.ok && res.uid ? '<button class="btn sm" id="allowIn">Permitir la entrada igualmente</button>' : ''}</div>`;
   const al = box.querySelector('#allowIn'); if (al) al.onclick = () => { registerEntry({ ...res, title:`${SOCIOS[res.uid]}: entrada permitida por recepción` }, true); render(); toast('Entrada registrada.'); };
   if (navigator.vibrate) navigator.vibrate(res.ok ? 60 : [60, 60, 60]);
