@@ -27,7 +27,7 @@ Cuando cambie `supabase.sql`, vuelve a pegarlo entero en el SQL Editor y pulsa R
 - Los socios no ven quién más está apuntado, solo cuántas plazas quedan.
 - Multicentro: cada fila lleva `center_id`; el centro de cada app se fija en `config.json`.
 - `centers.test_payments = true`: los pagos de la app son de prueba y suman clases. Ponlo a `false` cuando se conecte una pasarela real; mientras, recepción suma clases con «Añadir clases» en la ficha.
-- La app consulta cambios cada 20 s y al volver a abrirla.
+- Cada 20 s la app solo pregunta `my_rev()` (contador de cambios del centro, subido por triggers) y descarga `hydrate()` cuando cambia o cada 10 min. Foto y firma viajan como "@huella" y se piden una vez con `client_media()`.
 - En `cfg` se guardan también los Ajustes de Recepción: equipo (`staff`), bonos (`plans`, con `until` y `limit` para preventa), códigos (`codes`, ocultos a los socios), clases de prueba al registrarse (`trial`) y fecha de apertura (`open`, el horario empieza ese día).
 
 ## Pendiente
