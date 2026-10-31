@@ -167,7 +167,8 @@ main{padding-block:24px 64px}
 .promo{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 16px}.promo input{flex:1 1 200px;min-width:0;max-width:320px;text-transform:uppercase}
 .alert.opening{margin:0 0 14px}
 @media (max-width:430px){.bottom-nav .bn{font-size:10px;letter-spacing:-.01em;padding-inline:0}.bottom-nav{padding-inline:4px}}
-.gseg{margin-bottom:16px;overflow-x:auto;scrollbar-width:none;max-width:100%}.gseg::-webkit-scrollbar{display:none}.gseg button{white-space:nowrap}
+.gseg{margin-bottom:16px;flex-wrap:wrap;gap:2px}.gseg button{white-space:nowrap;flex:1 0 auto}
+@media (max-width:560px){.gseg{border-radius:18px}.gseg button{padding:7px 10px;font-size:13.5px}}
 .stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px;margin-bottom:16px}.stat{display:flex;flex-direction:column;gap:2px}.stat-v{font-size:26px;font-weight:600;line-height:1.2;margin-top:4px}
 .charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr));gap:12px;margin-bottom:16px}.charts h2{font-size:15px;margin:0 0 12px}
 .vbars{display:grid;grid-template-columns:repeat(var(--n),minmax(0,1fr));gap:2px;align-items:end;height:170px}.vb{height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:4px;cursor:default;outline:none}
@@ -180,6 +181,9 @@ main{padding-block:24px 64px}
 .acc-bar{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin-bottom:14px}.acc-nav{display:flex;align-items:center;gap:10px}.acc-nav b{min-width:150px;text-align:center;font-size:14.5px}
 .acc-head{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin:20px 0 10px}
 .goals{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}.goal{display:flex;flex-direction:column;gap:2px}
+.mini-prods{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}.mini-prod{display:flex;gap:10px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:8px}
+.mini-prod.off{opacity:.5}.mini-prod b,.mini-prod small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.mini-art{width:48px;height:48px;flex:none;border-radius:8px;overflow:hidden;background:var(--surface-2);display:grid;place-items:center}
+.mini-art img{width:100%;height:100%;object-fit:cover}.mini-art svg{width:40px;height:40px}
 .order{display:flex;gap:14px;justify-content:space-between;align-items:flex-start;flex-wrap:wrap}.order-act{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .goals-panel{margin-bottom:16px}.goals-panel h2{margin:0 0 10px}.goal-row{display:grid;gap:5px;margin-top:12px}.goal-hd{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
 .goal-bar{height:9px;background:var(--surface-2);border-radius:5px;overflow:hidden}.goal-bar span{display:block;height:100%;background:var(--accent);border-radius:5px}
@@ -4527,7 +4531,7 @@ function viewAjustes(){
       <button type="button" class="btn ghost sm" data-act="add-reward" style="margin-top:12px">Añadir premio</button>
     </section>
 
-    <section class="aj-sec"><h2>Tienda</h2>
+    <section class="aj-sec" id="aj_tienda" style="scroll-margin-top:140px"><h2>Tienda</h2>
       <p class="muted">Lo que pongas aquí es lo que ven tus clientes en la pestaña Tienda. Los pedidos te llegan en Gestión → Pedidos.</p>
       ${d.products.map((p, i) => `<div class="aj-card aj-prod"><div class="aj-photo">${prodArt(p)}<label class="btn ghost sm">Foto<input type="file" accept="image/*" data-photo="${i}" hidden></label></div><div class="aj-grid">
         ${fld('Producto', `products.${i}.name`, p.name)}
@@ -5283,6 +5287,13 @@ function segConta(st){
 }
 const ORDER_TXT = { pendiente:'Pendiente', listo:'Listo para recoger', entregado:'Entregado', cancelado:'Cancelado' };
 function segPedidos(){
+  const prods = shopProducts();
+  const head = `<div class="acc-head" style="margin-top:0"><h2 class="section-t desc" style="margin:0">Productos (${prods.filter(p => p.on !== false).length} a la venta)</h2><button class="btn sm" id="g_prods">Editar productos</button></div>
+    <div class="mini-prods">${prods.map(p => `<div class="mini-prod ${p.on === false ? 'off' : ''}"><div class="mini-art">${prodArt(p)}</div><div style="min-width:0"><b>${esc(p.name)}</b><small class="muted">${eur(+p.price || 0)} · ${esc(p.cat || SHOP_CATS[0])}${p.on === false ? ' · oculto' : ''}</small></div></div>`).join('')}</div>
+    <h2 class="section-t desc">Pedidos</h2>`;
+  return head + segPedidosList();
+}
+function segPedidosList(){
   const list = (S.orders || []).slice().sort((a, b) => (a.status === 'pendiente' ? 0 : a.status === 'listo' ? 1 : 2) - (b.status === 'pendiente' ? 0 : b.status === 'listo' ? 1 : 2) || b.ts - a.ts);
   return list.length ? `<div class="list">${list.map(o => `<div class="panel order">
     <div style="min-width:0"><div class="when">${fmtTs(o.ts)} · ${esc(SOCIOS[o.uid] || 'Cliente')}</div>
@@ -5295,10 +5306,10 @@ function segPedidos(){
 }
 function viewGestion(){
   const st = statsData(), pend = (S.orders || []).filter(o => o.status === 'pendiente').length;
-  const segs = [['stats','Estadísticas'],['clientes','Clientes'],['premios','Premios'],['conta','Contabilidad'],['pedidos', `Pedidos${pend ? ` (${pend})` : ''}`]];
+  const segs = [['stats','Estadísticas'],['clientes','Clientes'],['premios','Premios'],['conta','Contabilidad'],['pedidos', `Tienda${pend ? ` (${pend})` : ''}`]];
   const body = GS.seg === 'pedidos' ? segPedidos() : !st ? `<div class="empty">${ISO()}<p>Cargando…</p></div>`
     : GS.seg === 'clientes' ? segClientes(st) : GS.seg === 'premios' ? segPremios(st) : GS.seg === 'conta' ? segConta(st) : segStats(st);
-  return `<div class="view-head"><div><h1>Gestión</h1><p class="muted">Estadísticas, clientes, premios, contabilidad y pedidos de la tienda.</p></div></div>
+  return `<div class="view-head"><div><h1>Gestión</h1><p class="muted">Estadísticas, clientes, premios, contabilidad y tienda.</p></div></div>
   <div class="seg gseg" role="tablist">${segs.map(([k, l]) => `<button role="tab" data-gseg="${k}" aria-selected="${GS.seg === k}">${l}</button>`).join('')}</div>
   <div class="gbody">${body}</div><div class="tip" id="gtip" hidden></div>`;
 }
@@ -5340,6 +5351,7 @@ function afterGestion(root){
     S.expenses = (S.expenses || []).filter(e => e.id !== id); save(); render(); toast('Gasto quitado.');
   }));
   const ge = root.querySelector('#g_exp'); if (ge) ge.onclick = () => moneyModal(true);
+  const gpr = root.querySelector('#g_prods'); if (gpr) gpr.onclick = () => { setTab('ajustes'); setTimeout(() => { const t = document.querySelector('#aj_tienda'); if (t) t.scrollIntoView({ block:'start' }); }, 60); };
   const gi = root.querySelector('#g_inc'); if (gi) gi.onclick = () => moneyModal(false);
   const gc = root.querySelector('#g_csv'); if (gc) gc.onclick = () => {
     const st = statsData(), [f, t, label] = accRange(), q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
